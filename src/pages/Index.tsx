@@ -17,6 +17,7 @@ const Index = () => {
   const [selectedRoute, setSelectedRoute] = useState<BusRoute | null>(null);
   const [selectedBus, setSelectedBus] = useState<Bus | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [selectedMapStopId, setSelectedMapStopId] = useState<number | null>(null);
   const isMobile = useIsMobile();
 
   const { data: sriLankaRoutes = [], isLoading } = useQuery({
@@ -36,31 +37,69 @@ const Index = () => {
       
       const handleRouteBuses = (data: { routeId: number, buses: any[] }) => {
         if (data.routeId === parsedRouteId) {
-          const mappedBuses = data.buses
-            .map(b => ({
-            id: `b${b.busId}`,
-            plateNumber: b.busNumber,
-            lat: b.estimatedPosition?.lat || 0,
-            lng: b.estimatedPosition?.lng || 0,
-            speed: b.speed || 0,
-            heading: 0,
-            isSimulated: b.isSimulated,
-            status: b.lastConfirmedStop && !b.isSimulated ? "online" : "offline",
-            lastUpdated: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            occupancy: "low",
-            nextStop: b.next_stop_name || "Unknown",
-            etaMinutes: b.eta?.eta_minutes || 0,
-            hasConfirmedStop: b.lastConfirmedStop !== null
-          } as Bus));
-          
-          setLiveBuses(prev => ({ ...prev, [selectedRoute.id]: mappedBuses }));
+          setLiveBuses(prev => {
+            const currentBuses = prev[selectedRoute.id] || [];
+            
+            const mappedBuses = data.buses.map(b => {
+               let mappedIncomingOccupancy: "low" | "medium" | "high" = "low";
+               if (b.occupancyLevel) {
+                   if (b.occupancyLevel >= 5) mappedIncomingOccupancy = "high";
+                   else if (b.occupancyLevel >= 3) mappedIncomingOccupancy = "medium";
+               }
+
+               const existingBus = currentBuses.find(cb => cb.id === `b${b.busId}`);
+               const currentOccupancy = existingBus ? existingBus.occupancy : mappedIncomingOccupancy;
+               
+               return {
+                  id: `b${b.busId}`,
+                  plateNumber: b.busNumber,
+                  lat: b.estimatedPosition?.lat || 0,
+                  lng: b.estimatedPosition?.lng || 0,
+                  speed: b.speed || 0,
+                  heading: 0,
+                  isSimulated: b.isSimulated,
+                  status: b.lastConfirmedStop && !b.isSimulated ? "online" : "offline",
+                  lastUpdated: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                  occupancy: currentOccupancy,
+                  nextStop: b.next_stop_name || "Unknown",
+                  etaMinutes: b.eta?.eta_minutes || 0,
+                  hasConfirmedStop: b.lastConfirmedStop !== null
+              } as Bus;
+            });
+            
+            return { ...prev, [selectedRoute.id]: mappedBuses };
+          });
         }
+      };
+      
+      const handleOccupancyUpdate = (data: { busId: number, occupancyLevel: number, stopId: number }) => {
+          setLiveBuses(prev => {
+             const currentBuses = prev[selectedRoute.id];
+             if (!currentBuses) return prev;
+             
+             const levelMap: Record<number, "low" | "medium" | "high"> = {
+                1: "low", 2: "low",
+                3: "medium", 4: "medium",
+                5: "high"
+             };
+             
+             const mappedBuses = currentBuses.map(bus => {
+                 if (bus.id === `b${data.busId}`) {
+                     return { ...bus, occupancy: levelMap[data.occupancyLevel] || "low" };
+                 }
+                 return bus;
+             });
+             
+             return { ...prev, [selectedRoute.id]: mappedBuses };
+          });
       };
 
       socket.on("route:buses", handleRouteBuses);
+      socket.on("bus:occupancy_confirmed", handleOccupancyUpdate);
 
       return () => {
         socket.off("route:buses", handleRouteBuses);
+        socket.off("bus:occupancy_confirmed", handleOccupancyUpdate);
         socket.emit("unsubscribe:route", { routeId: parsedRouteId });
       };
     }
@@ -71,6 +110,7 @@ const Index = () => {
   const handleSelectRoute = (route: BusRoute) => {
     setSelectedRoute(route);
     setSelectedBus(null);
+    setSelectedMapStopId(null);
   };
 
   const handleSelectBus = (bus: Bus) => {
@@ -80,6 +120,7 @@ const Index = () => {
   const handleBack = () => {
     setSelectedRoute(null);
     setSelectedBus(null);
+    setSelectedMapStopId(null);
   };
 
   if (isLoading) {
@@ -100,6 +141,7 @@ const Index = () => {
           selectedBus={selectedBus}
           routes={sriLankaRoutes}
           onSelectBus={handleSelectBus}
+          onSelectStop={setSelectedMapStopId}
           activeBuses={activeBuses}
         />
       </div>
@@ -132,6 +174,7 @@ const Index = () => {
           selectedRoute={selectedRoute}
           selectedBus={selectedBus}
           activeBuses={activeBuses}
+          selectedMapStopId={selectedMapStopId}
           onSelectRoute={handleSelectRoute}
           onSelectBus={handleSelectBus}
           onBack={handleBack}
@@ -164,6 +207,7 @@ const Index = () => {
                     selectedRoute={selectedRoute}
                     selectedBus={selectedBus}
                     activeBuses={activeBuses}
+                    selectedMapStopId={selectedMapStopId}
                     onSelectRoute={handleSelectRoute}
                     onSelectBus={handleSelectBus}
                     onBack={handleBack}

@@ -8,12 +8,26 @@ import { predictETA } from "@/services/api";
 interface ETACountdownProps {
   route: BusRoute;
   bus: Bus;
+  selectedMapStopId?: number | null;
 }
 
-export function ETACountdown({ route, bus }: ETACountdownProps) {
+export function ETACountdown({ route, bus, selectedMapStopId }: ETACountdownProps) {
   const fallbackNextStopIndex = route.stops.findIndex((s) => s.name === bus.nextStop);
   const [selectedStopIndex, setSelectedStopIndex] = useState<number | null>(null);
   const [cachedConfirmedStopId, setCachedConfirmedStopId] = useState<number | null>(null);
+  const [locallyPassedStops, setLocallyPassedStops] = useState<Set<number>>(new Set());
+
+  // Sync manually selected stop from the map popup into the local expansion state
+  useEffect(() => {
+    console.log("ETACountdown received selectedMapStopId:", selectedMapStopId);
+    if (selectedMapStopId != null) {
+      const idx = route.stops.findIndex(s => parseInt(s.id.replace(/\D/g, '')) === selectedMapStopId);
+      console.log("ETACountdown calculated index:", idx, "current selectedStopIndex:", selectedStopIndex);
+      if (idx !== -1 && idx !== selectedStopIndex) {
+        setSelectedStopIndex(idx);
+      }
+    }
+  }, [selectedMapStopId, route.stops]);
 
   const lastConfirmedStopIndex = cachedConfirmedStopId != null
     ? route.stops.findIndex(s => parseInt(s.id.replace(/\D/g, '')) === cachedConfirmedStopId)
@@ -68,15 +82,24 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
       setSeconds(0);
       return;
     }
-    if (etaPrediction?.data?.eta_minutes !== undefined) {
-        setSeconds(Math.max(0, etaPrediction.data.eta_minutes * 60));
-    } else if (effectiveTargetIndex === fallbackNextStopIndex) {
-        setSeconds(Math.max(0, bus.etaMinutes * 60));
-    } else {
-        const offsetStops = Math.max(0, effectiveTargetIndex - confirmedNextIndex);
-        setSeconds((bus.etaMinutes + offsetStops * 8) * 60);
+    
+    // Don't overwrite countdown for stops that have already locally passed
+    if (locallyPassedStops.has(effectiveTargetIndex)) {
+      return;
     }
-  }, [etaPrediction, bus.etaMinutes, bus.id, effectiveTargetIndex, fallbackNextStopIndex, isJourneyComplete, isTargetPassed, confirmedNextIndex]);
+    
+    // Check for precise seconds first
+    if (etaPrediction?.data?.eta_seconds !== undefined && etaPrediction.data.eta_seconds !== null) {
+      setSeconds(Math.max(0, etaPrediction.data.eta_seconds));
+    } else if (etaPrediction?.data?.eta_minutes !== undefined && etaPrediction.data.eta_minutes !== null) {
+      setSeconds(Math.max(0, etaPrediction.data.eta_minutes * 60));
+    } else if (effectiveTargetIndex === fallbackNextStopIndex) {
+      setSeconds(Math.max(0, bus.etaMinutes * 60));
+    } else {
+      const offsetStops = Math.max(0, effectiveTargetIndex - confirmedNextIndex);
+      setSeconds((bus.etaMinutes + offsetStops * 8) * 60);
+    }
+  }, [etaPrediction, bus.etaMinutes, bus.id, effectiveTargetIndex, fallbackNextStopIndex, isJourneyComplete, isTargetPassed, confirmedNextIndex, locallyPassedStops]);
 
   useEffect(() => {
     if (isJourneyComplete) return;
@@ -96,12 +119,13 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
       if (!zeroReachedAt) {
         setZeroReachedAt(Date.now());
       } else {
-        // Wait 3 seconds if officially passed geographically, otherwise wait proportional time
-        const waitThresholdMs = isTargetPassed 
-          ? 3000 
-          : Math.min(90000, Math.max(15000, maxSeconds * 0.05 * 1000));
+        // Wait 3 seconds before auto-advancing to next stop
+        const waitThresholdMs = isTargetPassed ? 3000 : 3000;
         
         if (Date.now() - zeroReachedAt > waitThresholdMs) {
+          // Mark current stop as locally passed
+          setLocallyPassedStops(prev => new Set([...prev, effectiveTargetIndex]));
+          
           if (effectiveTargetIndex < route.stops.length - 1) {
             setSelectedStopIndex(effectiveTargetIndex + 1);
             setZeroReachedAt(null);
@@ -199,9 +223,9 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
       <div className="space-y-0">
         {route.stops.map((stop, i) => {
           // Use confirmed stop data for accurate passed-stop detection
-          const isPassed = lastConfirmedStopIndex >= 0
+          const isPassed = locallyPassedStops.has(i) || (lastConfirmedStopIndex >= 0
             ? i <= lastConfirmedStopIndex
-            : (fallbackNextStopIndex > 0 && i < fallbackNextStopIndex);
+            : (fallbackNextStopIndex > 0 && i < fallbackNextStopIndex));
           
           const isNext = lastConfirmedStopIndex >= 0
             ? i === lastConfirmedStopIndex + 1 && !isJourneyComplete
@@ -219,7 +243,7 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
           return (
             <div 
               key={stop.id} 
-              className={`flex items-center gap-3 py-1.5 px-2 -mx-2 rounded-md transition-colors ${
+              className={`flex items-center gap-3 py-3 px-2 -mx-2 rounded-md transition-colors ${
                 isSelected ? 'bg-primary/5' : ''
               } ${isFuture && !isJourneyComplete ? 'cursor-pointer hover:bg-muted' : ''}`}
               onClick={() => {

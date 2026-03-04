@@ -9,6 +9,7 @@ interface MobileBottomSheetProps {
   selectedRoute: BusRoute | null;
   selectedBus: Bus | null;
   activeBuses: Bus[];
+  selectedMapStopId: number | null;
   onSelectRoute: (route: BusRoute) => void;
   onSelectBus: (bus: Bus) => void;
   onBack: () => void;
@@ -21,6 +22,7 @@ export function MobileBottomSheet({
   selectedRoute,
   selectedBus,
   activeBuses,
+  selectedMapStopId,
   onSelectRoute,
   onSelectBus,
   onBack,
@@ -87,6 +89,7 @@ export function MobileBottomSheet({
           selectedRoute={selectedRoute}
           selectedBus={selectedBus}
           activeBuses={activeBuses}
+          selectedMapStopId={selectedMapStopId}
           onSelectRoute={onSelectRoute}
           onSelectBus={onSelectBus}
           onBack={onBack}
