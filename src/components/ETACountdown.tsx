@@ -219,7 +219,7 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
           return (
             <div 
               key={stop.id} 
-              className={`flex items-center gap-3 py-1.5 px-2 -mx-2 rounded-md transition-colors ${
+              className={`flex items-center gap-3 py-3 px-2 -mx-2 rounded-md transition-colors ${
                 isSelected ? 'bg-primary/5' : ''
               } ${isFuture && !isJourneyComplete ? 'cursor-pointer hover:bg-muted' : ''}`}
               onClick={() => {

@@ -39,17 +39,26 @@ function createBusIcon(color: string, isSelected: boolean) {
 
 function createStopIcon(color: string) {
   return L.divIcon({
-    className: "stop-icon",
+    className: "stop-icon-wrapper",
     html: `<div style="
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* Invisible touch target */
+      background: transparent;
+      border-radius: 50%;
+    "><div style="
       width: 12px;
       height: 12px;
       background: white;
       border: 3px solid ${color};
       border-radius: 50%;
       box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-    "></div>`,
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
+    "></div></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
   });
 }
 
