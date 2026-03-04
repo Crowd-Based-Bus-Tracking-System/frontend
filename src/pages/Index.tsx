@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { BusMap } from "@/components/BusMap";
@@ -6,10 +6,14 @@ import { RoutePanel } from "@/components/RoutePanel";
 import { MobileBottomSheet } from "@/components/MobileBottomSheet";
 import { BusRoute, Bus } from "@/data/routes";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { fetchRoutes } from "@/services/api";
+import { fetchRoutes, socket } from "@/services/api";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/context/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 const Index = () => {
+  const { user, logoutState, isAuthenticated } = useAuth();
   const [selectedRoute, setSelectedRoute] = useState<BusRoute | null>(null);
   const [selectedBus, setSelectedBus] = useState<Bus | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -20,6 +24,48 @@ const Index = () => {
     queryFn: fetchRoutes,
     refetchInterval: 5000,
   });
+
+  const [liveBuses, setLiveBuses] = useState<{ [routeId: string]: Bus[] }>({});
+
+  useEffect(() => {
+    if (!selectedRoute) return;
+    
+    // Subscribe to specific route tracking
+    const parsedRouteId = parseInt(selectedRoute.id.replace(/\D/g, ''));
+    if (parsedRouteId) {
+      socket.emit("subscribe:route", { routeId: parsedRouteId });
+      
+      const handleRouteBuses = (data: { routeId: number, buses: any[] }) => {
+        if (data.routeId === parsedRouteId) {
+          // Map backend simplified buses format back to frontend structural needs
+          const mappedBuses = data.buses.map(b => ({
+            id: `b${b.busId}`,
+            plateNumber: b.busNumber,
+            lat: b.estimatedPosition?.lat || 0,
+            lng: b.estimatedPosition?.lng || 0,
+            speed: b.speed || 0,
+            heading: 0,
+            status: b.status,
+            lastUpdated: new Date().toISOString(),
+            occupancy: "low",
+            nextStop: b.next_stop_name || "Unknown",
+            etaMinutes: b.eta?.eta_minutes || 0
+          } as Bus));
+          
+          setLiveBuses(prev => ({ ...prev, [selectedRoute.id]: mappedBuses }));
+        }
+      };
+
+      socket.on("route:buses", handleRouteBuses);
+
+      return () => {
+        socket.off("route:buses", handleRouteBuses);
+        socket.emit("unsubscribe:route", { routeId: parsedRouteId });
+      };
+    }
+  }, [selectedRoute?.id]);
+
+  const activeBuses = selectedRoute ? (liveBuses[selectedRoute.id] || selectedRoute.buses) : [];
 
   const handleSelectRoute = (route: BusRoute) => {
     setSelectedRoute(route);
@@ -53,7 +99,29 @@ const Index = () => {
           selectedBus={selectedBus}
           routes={sriLankaRoutes}
           onSelectBus={handleSelectBus}
+          activeBuses={activeBuses}
         />
+      </div>
+
+      {/* Top right floating auth strip */}
+      <div className="absolute top-4 right-4 z-[9999] flex items-center gap-2">
+        {isAuthenticated ? (
+          <div className="flex items-center gap-3 bg-white/90 backdrop-blur rounded-full px-4 py-2 shadow-lg border border-border">
+            <span className="text-sm font-medium">Hi, {user?.username}</span>
+            <Button variant="ghost" size="sm" onClick={logoutState} className="h-6 text-xs px-2 hover:bg-destructive/10 hover:text-destructive">
+              Log out
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Link to="/login">
+              <Button variant="secondary" className="shadow-lg bg-white/90 backdrop-blur hover:bg-white text-primary">Login</Button>
+            </Link>
+            <Link to="/register">
+              <Button className="shadow-lg">Sign Up</Button>
+            </Link>
+          </div>
+        )}
       </div>
 
       {isMobile ? (
@@ -93,6 +161,7 @@ const Index = () => {
                     routes={sriLankaRoutes}
                     selectedRoute={selectedRoute}
                     selectedBus={selectedBus}
+                    activeBuses={activeBuses}
                     onSelectRoute={handleSelectRoute}
                     onSelectBus={handleSelectBus}
                     onBack={handleBack}

@@ -10,6 +10,7 @@ interface RoutePanelProps {
   routes: BusRoute[];
   selectedRoute: BusRoute | null;
   selectedBus: BusType | null;
+  activeBuses?: BusType[];
   onSelectRoute: (route: BusRoute) => void;
   onSelectBus: (bus: BusType) => void;
   onBack: () => void;
@@ -30,7 +31,7 @@ const occupancyLabels = {
 type RouteTab = "stops" | "timetable";
 type BusTab = "tracking" | "report";
 
-export function RoutePanel({ routes, selectedRoute, selectedBus, onSelectRoute, onSelectBus, onBack }: RoutePanelProps) {
+export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [], onSelectRoute, onSelectBus, onBack }: RoutePanelProps) {
   const [search, setSearch] = useState("");
   const [routeTab, setRouteTab] = useState<RouteTab>("stops");
   const [busTab, setBusTab] = useState<BusTab>("tracking");
@@ -190,7 +191,7 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, onSelectRoute, 
                     {/* Buses */}
                     <p className="text-xs font-medium text-muted-foreground mb-2 px-1">LIVE BUSES</p>
                     <div className="space-y-2">
-                      {selectedRoute.buses.map((bus, i) => (
+                      {activeBuses.map((bus, i) => (
                         <motion.button
                           key={bus.id}
                           initial={{ opacity: 0, y: 10 }}

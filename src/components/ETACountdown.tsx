@@ -12,7 +12,14 @@ interface ETACountdownProps {
 
 export function ETACountdown({ route, bus }: ETACountdownProps) {
   const nextStopIndex = route.stops.findIndex((s) => s.name === bus.nextStop);
-  const targetStopId = route.stops[nextStopIndex]?.id ? parseInt(route.stops[nextStopIndex].id.replace(/\D/g, '')) : undefined;
+  const [selectedStopIndex, setSelectedStopIndex] = useState<number | null>(null);
+
+  // If user hasn't selected a stop, default to the immediate next stop
+  const effectiveTargetIndex = selectedStopIndex !== null ? selectedStopIndex : nextStopIndex;
+  
+  const targetStopId = route.stops[effectiveTargetIndex]?.id 
+    ? parseInt(route.stops[effectiveTargetIndex].id.replace(/\D/g, '')) 
+    : undefined;
   
   const { data: etaPrediction, isLoading } = useQuery({
     queryKey: ["eta", route.id, bus.id, targetStopId],
@@ -22,20 +29,24 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
       if (!parsedRouteId || !parsedBusId || !targetStopId) return null;
       return predictETA(parsedRouteId, parsedBusId, targetStopId);
     },
-    enabled: !!route.id && !!bus.id && !!targetStopId,
-    refetchInterval: 30000 // Poll every 30 seconds as fallback to sockets
+    enabled: !!route.id && !!bus.id && !!targetStopId
   });
 
   const [seconds, setSeconds] = useState(0);
+  const [zeroReachedAt, setZeroReachedAt] = useState<number | null>(null);
 
   useEffect(() => {
-    // If we have a fresh ML prediction, set it. Otherwise fallback to static bus.etaMinutes
-    if (etaPrediction?.data?.finalEtaMinutes) {
-        setSeconds(etaPrediction.data.finalEtaMinutes * 60);
+    // If we have a fresh ML prediction, set it. Otherwise fallback to static bus.etaMinutes if it's the next stop
+    if (etaPrediction?.data?.eta_minutes !== undefined) {
+        setSeconds(Math.max(0, etaPrediction.data.eta_minutes * 60));
+    } else if (effectiveTargetIndex === nextStopIndex) {
+        setSeconds(Math.max(0, bus.etaMinutes * 60));
     } else {
-        setSeconds(bus.etaMinutes * 60);
+        // Fallback for future stops if ML prediction is not ready yet
+        const offsetStops = effectiveTargetIndex - nextStopIndex;
+        setSeconds((bus.etaMinutes + offsetStops * 8) * 60);
     }
-  }, [etaPrediction, bus.etaMinutes, bus.id]);
+  }, [etaPrediction, bus.etaMinutes, bus.id, effectiveTargetIndex, nextStopIndex]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -44,12 +55,43 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const mins = Math.floor(seconds / 60);
+  const maxSeconds = (etaPrediction?.data?.eta_minutes || bus.etaMinutes || 60) * 60;
+
+  useEffect(() => {
+    if (seconds === 0 && maxSeconds > 0) {
+      if (!zeroReachedAt) {
+        setZeroReachedAt(Date.now());
+      } else {
+        // Dynamic wait threshold: 5% of max ETA, bounded between 15s and 90s
+        const waitThresholdMs = Math.min(90000, Math.max(15000, maxSeconds * 0.05 * 1000));
+        
+        if (Date.now() - zeroReachedAt > waitThresholdMs) {
+          if (effectiveTargetIndex < route.stops.length - 1) {
+            setSelectedStopIndex(effectiveTargetIndex + 1);
+            setZeroReachedAt(null);
+          }
+        }
+      }
+    } else {
+      setZeroReachedAt(null);
+    }
+  }, [seconds, zeroReachedAt, maxSeconds, effectiveTargetIndex, route.stops.length]);
+
+  const days = Math.floor(seconds / (24 * 3600));
+  const hrs = Math.floor((seconds % (24 * 3600)) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
   
+  const totalMins = Math.floor(seconds / 60);
+
   // Base progress on 60 minutes max if we don't have historical context
-  const maxSeconds = (etaPrediction?.data?.mlPrediction?.baseEtaMinutes || bus.etaMinutes || 60) * 60;
   const progress = 1 - Math.min(seconds / maxSeconds, 1);
+
+  const formatCompactTime = (totalMinutes: number) => {
+    if (totalMinutes >= 1440) return `${Math.floor(totalMinutes / 1440)}d ${Math.floor((totalMinutes % 1440) / 60)}h`;
+    if (totalMinutes >= 60) return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
+    return `${totalMinutes}m`;
+  };
 
   return (
     <div className="space-y-3">
@@ -64,17 +106,37 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
         />
         <div className="relative flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-primary" />
-            <span className="text-xs text-muted-foreground">Arriving at {bus.nextStop}</span>
+            <Clock className={`w-4 h-4 ${isLoading ? 'animate-spin text-muted-foreground' : 'text-primary'}`} />
+            <span className="text-xs text-muted-foreground">
+              Arriving at {route.stops[effectiveTargetIndex]?.name}
+            </span>
           </div>
           <div className="flex items-baseline gap-0.5">
-            <span className="text-2xl font-bold text-foreground tabular-nums">
-              {String(mins).padStart(2, "0")}
-            </span>
-            <span className="text-lg text-muted-foreground animate-pulse">:</span>
-            <span className="text-2xl font-bold text-foreground tabular-nums">
-              {String(secs).padStart(2, "0")}
-            </span>
+            {days > 0 ? (
+              <>
+                <span className="text-2xl font-bold text-foreground tabular-nums">{days}</span>
+                <span className="text-sm font-medium text-muted-foreground mr-1">d</span>
+                <span className="text-2xl font-bold text-foreground tabular-nums">{hrs}</span>
+                <span className="text-sm font-medium text-muted-foreground">h</span>
+              </>
+            ) : hrs > 0 ? (
+              <>
+                <span className="text-2xl font-bold text-foreground tabular-nums">{hrs}</span>
+                <span className="text-sm font-medium text-muted-foreground mr-1">h</span>
+                <span className="text-2xl font-bold text-foreground tabular-nums">{mins}</span>
+                <span className="text-sm font-medium text-muted-foreground">m</span>
+              </>
+            ) : (
+              <>
+                <span className="text-2xl font-bold text-foreground tabular-nums">
+                  {String(mins).padStart(2, "0")}
+                </span>
+                <span className="text-lg text-muted-foreground animate-pulse">:</span>
+                <span className="text-2xl font-bold text-foreground tabular-nums">
+                  {String(secs).padStart(2, "0")}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -85,27 +147,40 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
           const isPassed = nextStopIndex > 0 && i < nextStopIndex;
           const isNext = i === nextStopIndex;
           const isFuture = i > nextStopIndex;
-          const futureETA = isFuture && nextStopIndex >= 0 
-            ? mins + (i - nextStopIndex) * 8 
+          const isSelected = i === effectiveTargetIndex;
+          
+          // Only show approximation if this isn't the currently selected target
+          const futureETA = isFuture && !isSelected && nextStopIndex >= 0 
+            ? totalMins + (i - effectiveTargetIndex) * 8 
             : null;
 
           return (
-            <div key={stop.id} className="flex items-center gap-3 py-1.5">
+            <div 
+              key={stop.id} 
+              className={`flex items-center gap-3 py-1.5 px-2 -mx-2 rounded-md transition-colors ${
+                isSelected ? 'bg-primary/5' : ''
+              } ${isFuture ? 'cursor-pointer hover:bg-muted' : ''}`}
+              onClick={() => {
+                if (isFuture || isNext) setSelectedStopIndex(i);
+              }}
+            >
               <div className="flex flex-col items-center w-4">
                 <motion.div
                   className={`w-3 h-3 rounded-full border-2 ${
                     isPassed
                       ? "bg-primary border-primary"
+                      : isSelected
+                      ? "bg-primary border-primary"
                       : isNext
                       ? "bg-accent border-accent"
                       : "bg-transparent border-border"
                   }`}
-                  animate={isNext ? { scale: [1, 1.3, 1] } : {}}
+                  animate={isSelected ? { scale: [1, 1.3, 1] } : {}}
                   transition={{ duration: 1.5, repeat: Infinity }}
                 />
                 {i < route.stops.length - 1 && (
                   <div
-                    className={`w-0.5 h-5 ${isPassed ? "bg-primary" : "bg-border"}`}
+                    className={`w-0.5 h-5 ${isPassed || (isSelected && !isNext) ? "bg-primary" : "bg-border"}`}
                   />
                 )}
               </div>
@@ -114,7 +189,7 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
                   className={`text-xs ${
                     isPassed
                       ? "text-muted-foreground line-through"
-                      : isNext
+                      : isNext || isSelected
                       ? "text-foreground font-semibold"
                       : "text-muted-foreground"
                   }`}
@@ -125,15 +200,23 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
                       NEXT
                     </span>
                   )}
+                  {isSelected && !isNext && (
+                    <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-medium">
+                      SELECTED
+                    </span>
+                  )}
                 </span>
-                {isNext && (
-                  <span className="text-xs font-bold text-accent tabular-nums">{mins}m</span>
+                {isSelected && (
+                  <span className="text-xs font-bold text-primary tabular-nums">{formatCompactTime(totalMins)}</span>
+                )}
+                {isNext && !isSelected && (
+                  <span className="text-[11px] text-muted-foreground tabular-nums">~{formatCompactTime(bus.etaMinutes)}</span>
                 )}
                 {futureETA !== null && (
-                  <span className="text-[11px] text-muted-foreground tabular-nums">~{futureETA}m</span>
+                  <span className="text-[11px] text-muted-foreground tabular-nums">~{formatCompactTime(futureETA)}</span>
                 )}
                 {isPassed && (
-                  <MapPin className="w-3 h-3 text-primary" />
+                  <MapPin className="w-3 h-3 text-primary/50" />
                 )}
               </div>
             </div>
