@@ -30,15 +30,14 @@ const Index = () => {
   useEffect(() => {
     if (!selectedRoute) return;
     
-    // Subscribe to specific route tracking
     const parsedRouteId = parseInt(selectedRoute.id.replace(/\D/g, ''));
     if (parsedRouteId) {
       socket.emit("subscribe:route", { routeId: parsedRouteId });
       
       const handleRouteBuses = (data: { routeId: number, buses: any[] }) => {
         if (data.routeId === parsedRouteId) {
-          // Map backend simplified buses format back to frontend structural needs
-          const mappedBuses = data.buses.map(b => ({
+          const mappedBuses = data.buses
+            .map(b => ({
             id: `b${b.busId}`,
             plateNumber: b.busNumber,
             lat: b.estimatedPosition?.lat || 0,
@@ -46,10 +45,11 @@ const Index = () => {
             speed: b.speed || 0,
             heading: 0,
             status: b.status,
-            lastUpdated: new Date().toISOString(),
+            lastUpdated: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             occupancy: "low",
             nextStop: b.next_stop_name || "Unknown",
-            etaMinutes: b.eta?.eta_minutes || 0
+            etaMinutes: b.eta?.eta_minutes || 0,
+            hasConfirmedStop: b.lastConfirmedStop !== null
           } as Bus));
           
           setLiveBuses(prev => ({ ...prev, [selectedRoute.id]: mappedBuses }));
@@ -181,7 +181,7 @@ const Index = () => {
       >
         <Stat label="Routes" value={sriLankaRoutes.length.toString()} />
         <div className="w-px h-8 bg-border" />
-        <Stat label="Live Buses" value={sriLankaRoutes.reduce((a, r) => a + r.buses.filter(b => b.status === "online").length, 0).toString()} />
+        <Stat label="Live Buses" value={sriLankaRoutes.reduce((a, r) => a + r.buses.filter(b => (b as any).hasConfirmedStop).length, 0).toString()} />
         <div className="w-px h-8 bg-border" />
         <Stat label="Stops" value={sriLankaRoutes.reduce((a, r) => a + r.stops.length, 0).toString()} />
       </motion.div>

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, CheckCircle, Send, ThumbsUp } from "lucide-react";
 import { BusRoute, Bus } from "@/data/routes";
-import { useMutation } from "@tanstack/react-query";
-import { reportArrival } from "@/services/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { reportArrival, fetchRecentReports, upvoteReport as apiUpvoteReport, socket } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
 
 interface ArrivalReportProps {
@@ -21,31 +21,71 @@ interface Report {
 export function ArrivalReport({ route, bus }: ArrivalReportProps) {
   const { user, isAuthenticated } = useAuth();
   const [selectedStop, setSelectedStop] = useState<string>("");
-  const [reports, setReports] = useState<Report[]>([]);
   const [submitted, setSubmitted] = useState(false);
-  const [geoError, setGeoError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const parsedBusId = parseInt(bus.id.replace(/\D/g, ''));
+  const parsedRouteId = parseInt(route.id.replace(/\D/g, ''));
+
+  const { data: reportsData } = useQuery({
+    queryKey: ["reports", parsedBusId],
+    queryFn: () => fetchRecentReports(parsedBusId),
+    enabled: !!parsedBusId
+  });
+
+  const reports: Report[] = reportsData?.reports || [];
+
+  useEffect(() => {
+    if (!parsedRouteId) return;
+
+    const handleNewReport = (report: Report) => {
+        // Optimistically add new report to cache
+        queryClient.setQueryData(["reports", parsedBusId], (old: any) => {
+            if (!old) return { reports: [report] };
+            // Ensure we don't duplicate
+            if (old.reports.find((r: Report) => r.id === report.id)) return old;
+            return { ...old, reports: [report, ...old.reports] };
+        });
+    };
+
+    const handleReportUpvote = (data: { reportId: string, upvotes: number }) => {
+        queryClient.setQueryData(["reports", parsedBusId], (old: any) => {
+            if (!old) return old;
+            return {
+                ...old,
+                reports: old.reports.map((r: Report) => 
+                    r.id === data.reportId ? { ...r, upvotes: data.upvotes } : r
+                )
+            };
+        });
+    };
+
+    socket.on("bus:new_report", handleNewReport);
+    socket.on("bus:report_upvote", handleReportUpvote);
+
+    return () => {
+        socket.off("bus:new_report", handleNewReport);
+        socket.off("bus:report_upvote", handleReportUpvote);
+    };
+  }, [parsedRouteId, parsedBusId, queryClient]);
 
   const reportMutation = useMutation({
     mutationFn: async (stopName: string) => {
       const stopDef = route.stops.find((s) => s.name === stopName);
       if (!route.id || !bus.id || !stopDef?.id) throw new Error("Missing valid database IDs for arrival reporting.");
       
-      const parsedRouteId = parseInt(route.id.replace(/\D/g, ''));
-      const parsedBusId = parseInt(bus.id.replace(/\D/g, ''));
       const parsedStopId = parseInt(stopDef.id.replace(/\D/g, ''));
       
-      // Get User Geolocation to validate distance
       const getPosition = (): Promise<GeolocationPosition> => {
         return new Promise((resolve, reject) => {
           if (!navigator.geolocation) {
-            reject(new Error("Geolocation is not supported by your browser."));
+             reject(new Error("Geolocation is not supported."));
           } else {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+             navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
           }
         });
       };
 
-      // Fallback relative to the selected Stop's center with slight variance to avoid 0-distance ML drops under local test runs
       let userLat = stopDef.lat; 
       let userLng = stopDef.lng;
       
@@ -55,7 +95,6 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
         userLng = position.coords.longitude;
       } catch (err) {
         console.warn("Could not get exact location, using fallback stop coordinates to bypass radius block.", err);
-        // Add tiny variance to stop coordinates so distance isn't perfectly 0
         userLat = stopDef.lat + (Math.random() - 0.05) * 0.000001; 
         userLng = stopDef.lng + (Math.random() - 0.05) * 0.000001;
       }
@@ -74,16 +113,14 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 3000);
       setSelectedStop("");
-      
-      // Keep optimistic UI rendering mechanism for reports demo
-      const newReport: Report = {
-        id: Date.now().toString(),
-        stopName: selectedStop,
-        timestamp: new Date().toLocaleTimeString("en-LK", { hour: "2-digit", minute: "2-digit" }),
-        upvotes: 1,
-      };
-      setReports((prev) => [newReport, ...prev]);
+      // Real-time socket will append it for us globally
     }
+  });
+
+  const upvoteMutation = useMutation({
+      mutationFn: async (reportId: string) => {
+          return apiUpvoteReport(reportId, parsedRouteId);
+      }
   });
 
   const handleReport = () => {
@@ -92,9 +129,7 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
   };
 
   const handleUpvote = (id: string) => {
-    setReports((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, upvotes: r.upvotes + 1 } : r))
-    );
+    upvoteMutation.mutate(id);
   };
 
   return (

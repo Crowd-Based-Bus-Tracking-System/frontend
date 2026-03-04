@@ -108,7 +108,7 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-                        {route.buses.filter(b => b.status === "online").length} live
+                        {route.buses.filter(b => (b as any).hasConfirmedStop).length} live
                       </span>
                       <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
@@ -208,7 +208,10 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [
                             <span className={`w-2 h-2 rounded-full ${bus.status === "online" ? "bg-bus-online bus-marker-pulse" : bus.status === "delayed" ? "bg-accent" : "bg-bus-offline"}`} />
                           </div>
                           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> ETA {bus.etaMinutes}m</span>
+                            <span className="flex items-center gap-1">
+                               <Clock className="w-3 h-3" /> 
+                               {bus.nextStopEta && bus.nextStopEta > 0 ? `Next: ${bus.nextStop} in ${bus.nextStopEta}m` : `ETA ${bus.etaMinutes}m`}
+                            </span>
                             <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> {bus.speed} km/h</span>
                             <span className="flex items-center gap-1">
                               <Users className="w-3 h-3" />

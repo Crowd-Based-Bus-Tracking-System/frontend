@@ -97,3 +97,19 @@ export async function register(email: string, password: string, username: string
     if (!response.ok) throw new Error(data.message || "Failed to register");
     return data;
 }
+
+export async function fetchRecentReports(busId: string | number) {
+    const response = await fetch(`${API_BASE_URL}/arrival/reports/${busId}`);
+    if (!response.ok) throw new Error("Failed to fetch reports");
+    return response.json();
+}
+
+export async function upvoteReport(reportId: string, routeId: string | number) {
+    const response = await fetch(`${API_BASE_URL}/arrival/${reportId}/upvote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routeId })
+    });
+    if (!response.ok) throw new Error("Failed to upvote report");
+    return response.json();
+}

@@ -139,6 +139,14 @@ export function ETACountdown({ route, bus }: ETACountdownProps) {
             )}
           </div>
         </div>
+        
+        {/* Speed indicator */}
+        <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-3">
+             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card/80 border border-border/30">
+                <span className="text-xs font-semibold text-foreground">Speed</span>
+             </div>
+             <div className="text-sm font-bold text-primary mr-1">{bus.speed} km/h</div>
+        </div>
       </div>
 
       {/* Stop-by-stop ETA */}
