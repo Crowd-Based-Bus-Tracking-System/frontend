@@ -254,11 +254,12 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [
                   <Bus className="w-8 h-8 text-accent" />
                 </motion.div>
                 <h2 className="text-lg font-bold text-foreground">{selectedBus.plateNumber}</h2>
-                <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full mt-1 ${
-                  selectedBus.status === "online" ? "bg-bus-online/20 text-bus-online" : "bg-accent/20 text-accent"
+               <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full mt-1 ${
+                  selectedBus.status === "online" ? "bg-bus-online/20 text-bus-online" : 
+                  selectedBus.status === "offline" ? "bg-bus-offline/20 text-bus-offline" : "bg-accent/20 text-accent"
                 }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${selectedBus.status === "online" ? "bg-bus-online" : "bg-accent"}`} />
-                  {selectedBus.status === "online" ? "On Route" : "Delayed"}
+                  <span className={`w-1.5 h-1.5 rounded-full ${selectedBus.status === "online" ? "bg-bus-online" : selectedBus.status === "offline" ? "bg-bus-offline" : "bg-accent"}`} />
+                  {selectedBus.status === "online" ? "Live" : selectedBus.status === "offline" ? "Scheduled" : "Delayed"}
                 </span>
               </div>
 
