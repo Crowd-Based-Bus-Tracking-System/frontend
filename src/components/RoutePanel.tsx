@@ -12,6 +12,7 @@ interface RoutePanelProps {
   selectedRoute: BusRoute | null;
   selectedBus: BusType | null;
   activeBuses?: BusType[];
+  selectedMapStopId?: number | null;
   onSelectRoute: (route: BusRoute) => void;
   onSelectBus: (bus: BusType) => void;
   onBack: () => void;
@@ -32,7 +33,7 @@ const occupancyLabels = {
 type RouteTab = "stops" | "timetable";
 type BusTab = "tracking" | "report" | "occupancy";
 
-export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [], onSelectRoute, onSelectBus, onBack }: RoutePanelProps) {
+export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [], selectedMapStopId, onSelectRoute, onSelectBus, onBack }: RoutePanelProps) {
   const [search, setSearch] = useState("");
   const [routeTab, setRouteTab] = useState<RouteTab>("stops");
   const [busTab, setBusTab] = useState<BusTab>("tracking");
@@ -295,7 +296,7 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [
               <AnimatePresence mode="wait">
                 {busTab === "tracking" ? (
                   <motion.div key="tracking-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <ETACountdown route={selectedRoute} bus={selectedBus} />
+                    <ETACountdown route={selectedRoute} bus={selectedBus} selectedMapStopId={selectedMapStopId} />
 
                     <div className="space-y-3 mt-4">
                       <DetailRow icon={<Zap className="w-4 h-4" />} label="Speed" value={`${selectedBus.speed} km/h`} />
