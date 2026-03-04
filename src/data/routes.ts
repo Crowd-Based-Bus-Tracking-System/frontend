@@ -18,6 +18,7 @@ export interface Bus {
   nextStop: string;
   nextStopEta?: number;
   etaMinutes: number;
+  isSimulated?: boolean;
 }
 
 export interface BusRoute {

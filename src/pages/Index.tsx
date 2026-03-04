@@ -44,7 +44,8 @@ const Index = () => {
             lng: b.estimatedPosition?.lng || 0,
             speed: b.speed || 0,
             heading: 0,
-            status: b.status,
+            isSimulated: b.isSimulated,
+            status: b.lastConfirmedStop && !b.isSimulated ? "online" : "offline",
             lastUpdated: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             occupancy: "low",
             nextStop: b.next_stop_name || "Unknown",
@@ -130,6 +131,7 @@ const Index = () => {
           routes={sriLankaRoutes}
           selectedRoute={selectedRoute}
           selectedBus={selectedBus}
+          activeBuses={activeBuses}
           onSelectRoute={handleSelectRoute}
           onSelectBus={handleSelectBus}
           onBack={handleBack}
