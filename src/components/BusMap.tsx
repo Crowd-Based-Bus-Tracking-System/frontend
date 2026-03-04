@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import { BusRoute, Bus } from "@/data/routes";
-import { socket } from "@/services/api";
+import { socket, fetchRouteBuses } from "@/services/api";
+import { useQuery } from "@tanstack/react-query";
 
 interface BusMapProps {
   selectedRoute: BusRoute | null;
   selectedBus: Bus | null;
   routes: BusRoute[];
   onSelectBus: (bus: Bus) => void;
+  activeBuses: Bus[];
 }
 
 function createBusIcon(color: string, isSelected: boolean) {
@@ -68,49 +70,19 @@ function MapController({ selectedRoute, selectedBus }: { selectedRoute: BusRoute
   return null;
 }
 
-export function BusMap({ selectedRoute, selectedBus, routes, onSelectBus }: BusMapProps) {
-  const [liveBuses, setLiveBuses] = useState<{ [routeId: string]: Bus[] }>({});
+export function BusMap({ selectedRoute, selectedBus, routes, onSelectBus, activeBuses }: BusMapProps) {
+  const [selectedMapStopId, setSelectedMapStopId] = useState<number | undefined>(undefined);
 
-  useEffect(() => {
-    if (!selectedRoute) return;
-    
-    // Subscribe to specific route tracking
-    const parsedRouteId = parseInt(selectedRoute.id.replace(/\D/g, ''));
-    if (parsedRouteId) {
-      socket.emit("subscribe:route", { routeId: parsedRouteId });
-      
-      const handleRouteBuses = (data: { routeId: number, buses: any[] }) => {
-        if (data.routeId === parsedRouteId) {
-          // Map backend simplified buses format back to frontend structural needs
-          const mappedBuses = data.buses.map(b => ({
-            id: `b${b.bus_id}`,
-            plateNumber: b.plate_number,
-            lat: b.current_location?.lat || 0,
-            lng: b.current_location?.lng || 0,
-            speed: b.speed || 0,
-            heading: 0,
-            status: b.status,
-            lastUpdated: new Date().toISOString(),
-            occupancy: "low",
-            nextStop: b.next_stop_name || "Unknown",
-            etaMinutes: b.eta_minutes || 0
-          } as Bus));
-          
-          setLiveBuses(prev => ({ ...prev, [selectedRoute.id]: mappedBuses }));
-        }
-      };
-
-      socket.on("route:buses", handleRouteBuses);
-
-      return () => {
-        socket.off("route:buses", handleRouteBuses);
-        socket.emit("unsubscribe:route", { routeId: parsedRouteId });
-      };
-    }
-  }, [selectedRoute?.id]);
-
-  // Use live data if available, else static original array
-  const activeBuses = selectedRoute ? (liveBuses[selectedRoute.id] || selectedRoute.buses) : [];
+  const { data: stopETAs, isLoading: isStopETAsLoading } = useQuery({
+    queryKey: ["stopETAs", selectedRoute?.id, selectedMapStopId],
+    queryFn: async () => {
+      const parsedRouteId = parseInt(selectedRoute!.id.replace(/\D/g, ''));
+      if (!parsedRouteId || !selectedMapStopId) return null;
+      return fetchRouteBuses(parsedRouteId, selectedMapStopId);
+    },
+    enabled: !!selectedRoute && !!selectedMapStopId,
+    refetchInterval: 15000 // Refresh popup ETAs every 15s
+  });
 
   return (
     <MapContainer
@@ -135,13 +107,73 @@ export function BusMap({ selectedRoute, selectedBus, routes, onSelectBus }: BusM
           />
 
           {/* Stops */}
-          {selectedRoute.stops.map((stop) => (
-            <Marker key={stop.id} position={[stop.lat, stop.lng]} icon={createStopIcon(selectedRoute.color)}>
-              <Popup className="custom-popup">
-                <div className="text-xs font-semibold">{stop.name}</div>
-              </Popup>
-            </Marker>
-          ))}
+          {selectedRoute.stops.map((stop) => {
+            const parsedStopId = parseInt(stop.id.replace(/\D/g, ''));
+            const isSelected = selectedMapStopId === parsedStopId;
+            
+            return (
+              <Marker 
+                key={stop.id} 
+                position={[stop.lat, stop.lng]} 
+                icon={createStopIcon(selectedRoute.color)}
+                zIndexOffset={1000}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedMapStopId(parsedStopId);
+                  }
+                }}
+              >
+                <Popup 
+                  className="custom-popup" 
+                  eventHandlers={{
+                    remove: () => {
+                      if (isSelected) setSelectedMapStopId(undefined);
+                    }
+                  }}
+                >
+                  <div className="min-w-[140px]">
+                    <div className="text-xs font-semibold mb-2">{stop.name}</div>
+                    
+                    {isSelected && (
+                      <div className="flex flex-col gap-1.5 mt-2 max-h-[160px] overflow-y-auto">
+                        <div className="text-[10px] uppercase text-muted-foreground font-semibold px-1 tracking-wider border-b border-border pb-1">Approaching Buses</div>
+                        {isStopETAsLoading ? (
+                          <div className="text-[10px] text-muted-foreground animate-pulse text-center py-2">Loading ETAs...</div>
+                        ) : stopETAs?.data?.buses?.length > 0 ? (
+                          stopETAs.data.buses.map((b: any) => {
+                            const matchingBus = activeBuses.find(ab => parseInt(ab.id.replace(/\D/g,'')) === b.busId);
+                            return (
+                              <div 
+                                key={b.busId} 
+                                className="flex justify-between items-center text-[10px] bg-muted/30 hover:bg-muted/50 transition-colors p-1.5 rounded-md cursor-pointer" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (matchingBus) onSelectBus(matchingBus);
+                                }}
+                              >
+                                <span className="font-medium whitespace-nowrap">Bus {b.busNumber}</span>
+                                <span className={`font-bold ${b.eta?.eta_minutes === 0 ? 'text-green-500' : 'text-primary'}`}>
+                                  {b.eta?.eta_minutes === 0 
+                                    ? 'Arr' 
+                                    : b.eta?.eta_minutes >= 1440 
+                                      ? `${Math.floor(b.eta.eta_minutes / 1440)}d ${Math.floor((b.eta.eta_minutes % 1440) / 60)}h`
+                                      : b.eta?.eta_minutes >= 60
+                                        ? `${Math.floor(b.eta.eta_minutes / 60)}h ${b.eta.eta_minutes % 60}m`
+                                        : `${b.eta?.eta_minutes}m`}
+                                </span>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-[10px] text-muted-foreground text-center py-2">No buses active</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
 
           {/* Buses */}
           {activeBuses.map((bus) => (

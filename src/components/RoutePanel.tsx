@@ -10,6 +10,7 @@ interface RoutePanelProps {
   routes: BusRoute[];
   selectedRoute: BusRoute | null;
   selectedBus: BusType | null;
+  activeBuses?: BusType[];
   onSelectRoute: (route: BusRoute) => void;
   onSelectBus: (bus: BusType) => void;
   onBack: () => void;
@@ -30,7 +31,7 @@ const occupancyLabels = {
 type RouteTab = "stops" | "timetable";
 type BusTab = "tracking" | "report";
 
-export function RoutePanel({ routes, selectedRoute, selectedBus, onSelectRoute, onSelectBus, onBack }: RoutePanelProps) {
+export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [], onSelectRoute, onSelectBus, onBack }: RoutePanelProps) {
   const [search, setSearch] = useState("");
   const [routeTab, setRouteTab] = useState<RouteTab>("stops");
   const [busTab, setBusTab] = useState<BusTab>("tracking");
@@ -107,7 +108,7 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, onSelectRoute, 
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-                        {route.buses.filter(b => b.status === "online").length} live
+                        {route.buses.filter(b => (b as any).hasConfirmedStop).length} live
                       </span>
                       <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
@@ -190,7 +191,7 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, onSelectRoute, 
                     {/* Buses */}
                     <p className="text-xs font-medium text-muted-foreground mb-2 px-1">LIVE BUSES</p>
                     <div className="space-y-2">
-                      {selectedRoute.buses.map((bus, i) => (
+                      {activeBuses.map((bus, i) => (
                         <motion.button
                           key={bus.id}
                           initial={{ opacity: 0, y: 10 }}
@@ -207,7 +208,10 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, onSelectRoute, 
                             <span className={`w-2 h-2 rounded-full ${bus.status === "online" ? "bg-bus-online bus-marker-pulse" : bus.status === "delayed" ? "bg-accent" : "bg-bus-offline"}`} />
                           </div>
                           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> ETA {bus.etaMinutes}m</span>
+                            <span className="flex items-center gap-1">
+                               <Clock className="w-3 h-3" /> 
+                               {bus.nextStopEta && bus.nextStopEta > 0 ? `Next: ${bus.nextStop} in ${bus.nextStopEta}m` : `ETA ${bus.etaMinutes}m`}
+                            </span>
                             <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> {bus.speed} km/h</span>
                             <span className="flex items-center gap-1">
                               <Users className="w-3 h-3" />

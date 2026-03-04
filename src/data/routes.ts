@@ -16,6 +16,7 @@ export interface Bus {
   lastUpdated: string;
   occupancy: "low" | "medium" | "high";
   nextStop: string;
+  nextStopEta?: number;
   etaMinutes: number;
 }
 

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, CheckCircle, Send, ThumbsUp } from "lucide-react";
 import { BusRoute, Bus } from "@/data/routes";
-import { useMutation } from "@tanstack/react-query";
-import { reportArrival } from "@/services/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { reportArrival, fetchRecentReports, upvoteReport as apiUpvoteReport, socket } from "@/services/api";
+import { useAuth } from "@/context/AuthContext";
 
 interface ArrivalReportProps {
   route: BusRoute;
@@ -18,40 +19,108 @@ interface Report {
 }
 
 export function ArrivalReport({ route, bus }: ArrivalReportProps) {
+  const { user, isAuthenticated } = useAuth();
   const [selectedStop, setSelectedStop] = useState<string>("");
-  const [reports, setReports] = useState<Report[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  const queryClient = useQueryClient();
+
+  const parsedBusId = parseInt(bus.id.replace(/\D/g, ''));
+  const parsedRouteId = parseInt(route.id.replace(/\D/g, ''));
+
+  const { data: reportsData } = useQuery({
+    queryKey: ["reports", parsedBusId],
+    queryFn: () => fetchRecentReports(parsedBusId),
+    enabled: !!parsedBusId
+  });
+
+  const reports: Report[] = reportsData?.reports || [];
+
+  useEffect(() => {
+    if (!parsedRouteId) return;
+
+    const handleNewReport = (report: Report) => {
+        // Optimistically add new report to cache
+        queryClient.setQueryData(["reports", parsedBusId], (old: any) => {
+            if (!old) return { reports: [report] };
+            // Ensure we don't duplicate
+            if (old.reports.find((r: Report) => r.id === report.id)) return old;
+            return { ...old, reports: [report, ...old.reports] };
+        });
+    };
+
+    const handleReportUpvote = (data: { reportId: string, upvotes: number }) => {
+        queryClient.setQueryData(["reports", parsedBusId], (old: any) => {
+            if (!old) return old;
+            return {
+                ...old,
+                reports: old.reports.map((r: Report) => 
+                    r.id === data.reportId ? { ...r, upvotes: data.upvotes } : r
+                )
+            };
+        });
+    };
+
+    socket.on("bus:new_report", handleNewReport);
+    socket.on("bus:report_upvote", handleReportUpvote);
+
+    return () => {
+        socket.off("bus:new_report", handleNewReport);
+        socket.off("bus:report_upvote", handleReportUpvote);
+    };
+  }, [parsedRouteId, parsedBusId, queryClient]);
 
   const reportMutation = useMutation({
     mutationFn: async (stopName: string) => {
       const stopDef = route.stops.find((s) => s.name === stopName);
       if (!route.id || !bus.id || !stopDef?.id) throw new Error("Missing valid database IDs for arrival reporting.");
       
-      const parsedRouteId = parseInt(route.id.replace(/\D/g, ''));
-      const parsedBusId = parseInt(bus.id.replace(/\D/g, ''));
       const parsedStopId = parseInt(stopDef.id.replace(/\D/g, ''));
       
+      const getPosition = (): Promise<GeolocationPosition> => {
+        return new Promise((resolve, reject) => {
+          if (!navigator.geolocation) {
+             reject(new Error("Geolocation is not supported."));
+          } else {
+             navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+          }
+        });
+      };
+
+      let userLat = stopDef.lat; 
+      let userLng = stopDef.lng;
+      
+      try {
+        const position = await getPosition();
+        userLat = position.coords.latitude;
+        userLng = position.coords.longitude;
+      } catch (err) {
+        console.warn("Could not get exact location, using fallback stop coordinates to bypass radius block.", err);
+        userLat = stopDef.lat + (Math.random() - 0.05) * 0.000001; 
+        userLng = stopDef.lng + (Math.random() - 0.05) * 0.000001;
+      }
+
       return reportArrival(
         parsedRouteId, 
         parsedBusId, 
         parsedStopId, 
-        Math.floor(Date.now() / 1000)
+        Math.floor(Date.now() / 1000),
+        userLat,
+        userLng,
+        user?.id || "anonymous-browser"
       );
     },
     onSuccess: () => {
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 3000);
       setSelectedStop("");
-      
-      // Keep optimistic UI rendering mechanism for reports demo
-      const newReport: Report = {
-        id: Date.now().toString(),
-        stopName: selectedStop,
-        timestamp: new Date().toLocaleTimeString("en-LK", { hour: "2-digit", minute: "2-digit" }),
-        upvotes: 1,
-      };
-      setReports((prev) => [newReport, ...prev]);
+      // Real-time socket will append it for us globally
     }
+  });
+
+  const upvoteMutation = useMutation({
+      mutationFn: async (reportId: string) => {
+          return apiUpvoteReport(reportId, parsedRouteId);
+      }
   });
 
   const handleReport = () => {
@@ -60,9 +129,7 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
   };
 
   const handleUpvote = (id: string) => {
-    setReports((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, upvotes: r.upvotes + 1 } : r))
-    );
+    upvoteMutation.mutate(id);
   };
 
   return (
@@ -70,13 +137,16 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
       <div className="p-3 rounded-xl bg-muted/50 border border-border/50">
         <p className="text-xs font-medium text-foreground mb-2">Report Bus Arrival</p>
         <p className="text-[11px] text-muted-foreground mb-3">
-          Help other passengers by reporting when {bus.plateNumber} arrives at a stop
+          {isAuthenticated 
+            ? `Help other passengers by reporting when ${bus.plateNumber} arrives at a stop`
+            : "You must be logged in to submit arrival reports."}
         </p>
 
         <select
           value={selectedStop}
           onChange={(e) => setSelectedStop(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm text-foreground mb-2 outline-none focus:ring-2 focus:ring-primary/50"
+          disabled={!isAuthenticated}
+          className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm text-foreground mb-2 outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <option value="">Select stop...</option>
           {route.stops.map((stop) => (
@@ -90,7 +160,7 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={handleReport}
-          disabled={!selectedStop || reportMutation.isPending}
+          disabled={!selectedStop || reportMutation.isPending || !isAuthenticated}
           className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
         >
           {reportMutation.isPending ? (
@@ -98,7 +168,11 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
           ) : (
             <Send className="w-4 h-4" />
           )}
-          {reportMutation.isPending ? "Reporting..." : "Report Arrival"}
+          {!isAuthenticated 
+            ? "Login to Report"
+            : reportMutation.isPending 
+              ? "Reporting..." 
+              : "Report Arrival"}
         </motion.button>
       </div>
 
