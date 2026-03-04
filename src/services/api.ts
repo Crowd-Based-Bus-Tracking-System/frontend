@@ -79,7 +79,6 @@ export async function login(email: string, password: string) {
 }
 
 export async function register(email: string, password: string, username: string) {
-    // Generate a random device identifier natively since the user is a browser client
     const syntheticDeviceId = `web-${Math.random().toString(36).substring(2, 15)}`;
 
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
@@ -111,5 +110,50 @@ export async function upvoteReport(reportId: string, routeId: string | number) {
         body: JSON.stringify({ routeId })
     });
     if (!response.ok) throw new Error("Failed to upvote report");
+    return response.json();
+}
+
+export async function reportOccupancy(
+    routeId: number,
+    busId: number,
+    stopId: number,
+    occupancyLevel: number,
+    userLat: number,
+    userLng: number,
+    userId: string | number = "browser-client"
+) {
+    const response = await fetch(`${API_BASE_URL}/occupancy/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            bus: { busId, routeId },
+            stopId,
+            occupancyLevel,
+            reportTime: Math.floor(Date.now() / 1000),
+            user: { id: String(userId), lat: userLat, lng: userLng }
+        })
+    });
+    if (!response.ok) throw new Error("Failed to report occupancy");
+    return response.json();
+}
+
+export async function fetchCurrentOccupancy(busId: number) {
+    const response = await fetch(`${API_BASE_URL}/occupancy/current/${busId}`);
+    if (!response.ok) throw new Error("Failed to fetch occupancy");
+    return response.json();
+}
+
+export async function fetchOccupancyPrediction(busId: number, stopId: number, routeId?: number) {
+    const url = routeId
+        ? `${API_BASE_URL}/occupancy/predict/${busId}/${stopId}?routeId=${routeId}`
+        : `${API_BASE_URL}/occupancy/predict/${busId}/${stopId}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Failed to fetch occupancy prediction");
+    return response.json();
+}
+
+export async function fetchOccupancyReports(busId: number) {
+    const response = await fetch(`${API_BASE_URL}/occupancy/reports/${busId}`);
+    if (!response.ok) throw new Error("Failed to fetch occupancy reports");
     return response.json();
 }

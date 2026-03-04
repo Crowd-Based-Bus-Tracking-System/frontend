@@ -4,6 +4,7 @@ import { Bus, MapPin, Search, ChevronRight, Users, Clock, Zap, Calendar, Flag } 
 import { BusRoute, Bus as BusType } from "@/data/routes";
 import { ETACountdown } from "./ETACountdown";
 import { ArrivalReport } from "./ArrivalReport";
+import { OccupancyReport } from "./OccupancyReport";
 import { Timetable } from "./Timetable";
 
 interface RoutePanelProps {
@@ -29,7 +30,7 @@ const occupancyLabels = {
 };
 
 type RouteTab = "stops" | "timetable";
-type BusTab = "tracking" | "report";
+type BusTab = "tracking" | "report" | "occupancy";
 
 export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [], onSelectRoute, onSelectBus, onBack }: RoutePanelProps) {
   const [search, setSearch] = useState("");
@@ -271,7 +272,15 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [
                     busTab === "tracking" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
                   }`}
                 >
-                  <Clock className="w-3 h-3" /> Live ETA
+                  <Clock className="w-3 h-3" /> ETA
+                </button>
+                <button
+                  onClick={() => setBusTab("occupancy")}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                    busTab === "occupancy" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+                  }`}
+                >
+                  <Users className="w-3 h-3" /> Occupancy
                 </button>
                 <button
                   onClick={() => setBusTab("report")}
@@ -279,7 +288,7 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [
                     busTab === "report" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
                   }`}
                 >
-                  <Flag className="w-3 h-3" /> Report
+                  <Flag className="w-3 h-3" /> Arrival
                 </button>
               </div>
 
@@ -290,9 +299,12 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [
 
                     <div className="space-y-3 mt-4">
                       <DetailRow icon={<Zap className="w-4 h-4" />} label="Speed" value={`${selectedBus.speed} km/h`} />
-                      <DetailRow icon={<Users className="w-4 h-4" />} label="Occupancy" value={occupancyLabels[selectedBus.occupancy]} />
                       <DetailRow icon={<Clock className="w-4 h-4" />} label="Last Update" value={selectedBus.lastUpdated} />
                     </div>
+                  </motion.div>
+                ) : busTab === "occupancy" ? (
+                  <motion.div key="occupancy-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <OccupancyReport route={selectedRoute} bus={selectedBus} />
                   </motion.div>
                 ) : (
                   <motion.div key="report-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

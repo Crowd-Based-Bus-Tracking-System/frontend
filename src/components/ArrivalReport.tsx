@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MapPin, CheckCircle, Send, ThumbsUp } from "lucide-react";
+import { MapPin, CheckCircle, Send } from "lucide-react";
 import { BusRoute, Bus } from "@/data/routes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { reportArrival, fetchRecentReports, upvoteReport as apiUpvoteReport, socket } from "@/services/api";
+import { reportArrival, fetchRecentReports, socket } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
 
 interface ArrivalReportProps {
@@ -48,24 +48,10 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
         });
     };
 
-    const handleReportUpvote = (data: { reportId: string, upvotes: number }) => {
-        queryClient.setQueryData(["reports", parsedBusId], (old: any) => {
-            if (!old) return old;
-            return {
-                ...old,
-                reports: old.reports.map((r: Report) => 
-                    r.id === data.reportId ? { ...r, upvotes: data.upvotes } : r
-                )
-            };
-        });
-    };
-
     socket.on("bus:new_report", handleNewReport);
-    socket.on("bus:report_upvote", handleReportUpvote);
 
     return () => {
         socket.off("bus:new_report", handleNewReport);
-        socket.off("bus:report_upvote", handleReportUpvote);
     };
   }, [parsedRouteId, parsedBusId, queryClient]);
 
@@ -94,7 +80,7 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
         userLat = position.coords.latitude;
         userLng = position.coords.longitude;
       } catch (err) {
-        console.warn("Could not get exact location, using fallback stop coordinates to bypass radius block.", err);
+        console.warn("Could not get exact location, using fallback stop coordinates.", err);
         userLat = stopDef.lat + (Math.random() - 0.05) * 0.000001; 
         userLng = stopDef.lng + (Math.random() - 0.05) * 0.000001;
       }
@@ -117,19 +103,9 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
     }
   });
 
-  const upvoteMutation = useMutation({
-      mutationFn: async (reportId: string) => {
-          return apiUpvoteReport(reportId, parsedRouteId);
-      }
-  });
-
   const handleReport = () => {
     if (!selectedStop) return;
     reportMutation.mutate(selectedStop);
-  };
-
-  const handleUpvote = (id: string) => {
-    upvoteMutation.mutate(id);
   };
 
   return (
@@ -186,40 +162,19 @@ export function ArrivalReport({ route, bus }: ArrivalReportProps) {
             className="flex items-center gap-2 p-3 rounded-xl bg-bus-online/10 border border-bus-online/30"
           >
             <CheckCircle className="w-4 h-4 text-bus-online" />
-            <span className="text-xs text-bus-online font-medium">Report submitted! Thank you 🎉</span>
+            <span className="text-xs text-bus-online font-medium">Report submitted! Thank you!</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Recent reports */}
+      {/* Total reports summary */}
       {reports.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2 px-1">RECENT REPORTS</p>
-          <div className="space-y-1.5">
-            {reports.map((report) => (
-              <motion.div
-                key={report.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center justify-between p-2.5 rounded-lg bg-card border border-border/50"
-              >
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-3 h-3 text-primary" />
-                  <div>
-                    <p className="text-xs font-medium text-foreground">{report.stopName}</p>
-                    <p className="text-[10px] text-muted-foreground">{report.timestamp}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleUpvote(report.id)}
-                  className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted hover:bg-muted/80 transition-colors"
-                >
-                  <ThumbsUp className="w-3 h-3 text-primary" />
-                  <span className="text-[11px] font-medium text-foreground">{report.upvotes}</span>
-                </button>
-              </motion.div>
-            ))}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border border-border/50">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-primary" />
+            <span className="text-xs font-medium text-foreground">Total Reports</span>
           </div>
+          <span className="text-sm font-bold text-primary">{reports.length}</span>
         </div>
       )}
     </div>
