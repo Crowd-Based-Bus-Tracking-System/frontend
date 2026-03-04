@@ -131,6 +131,7 @@ const Index = () => {
           routes={sriLankaRoutes}
           selectedRoute={selectedRoute}
           selectedBus={selectedBus}
+          activeBuses={activeBuses}
           onSelectRoute={handleSelectRoute}
           onSelectBus={handleSelectBus}
           onBack={handleBack}
