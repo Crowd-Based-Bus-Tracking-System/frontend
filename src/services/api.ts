@@ -24,7 +24,7 @@ export async function fetchTimetable(routeId: string) {
     return response.json();
 }
 
-export async function predictETA(routeId: number, busId: number, targetStopId: number, location?: { lat: number; lng: number }) {
+export async function predictETA(routeId: number, busId: number, targetStopId: number | null, location?: { lat: number; lng: number }) {
     const response = await fetch(`${API_BASE_URL}/eta/predict-eta`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

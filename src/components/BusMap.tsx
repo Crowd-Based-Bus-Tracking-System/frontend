@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  useMap,
+} from "react-leaflet";
 import L from "leaflet";
 import { BusRoute, Bus } from "@/data/routes";
 import { socket, fetchRouteBuses } from "@/services/api";
@@ -63,14 +70,22 @@ function createStopIcon(color: string) {
   });
 }
 
-function MapController({ selectedRoute, selectedBus }: { selectedRoute: BusRoute | null; selectedBus: Bus | null }) {
+function MapController({
+  selectedRoute,
+  selectedBus,
+}: {
+  selectedRoute: BusRoute | null;
+  selectedBus: Bus | null;
+}) {
   const map = useMap();
 
   useEffect(() => {
     if (selectedBus) {
       map.flyTo([selectedBus.lat, selectedBus.lng], 14, { duration: 1 });
     } else if (selectedRoute) {
-      const bounds = L.latLngBounds(selectedRoute.stops.map((s) => [s.lat, s.lng]));
+      const bounds = L.latLngBounds(
+        selectedRoute.stops.map((s) => [s.lat, s.lng]),
+      );
       map.flyToBounds(bounds, { padding: [50, 50], duration: 1 });
     } else {
       map.flyTo([7.8731, 80.7718], 8, { duration: 1 });
@@ -80,19 +95,28 @@ function MapController({ selectedRoute, selectedBus }: { selectedRoute: BusRoute
   return null;
 }
 
-export function BusMap({ selectedRoute, selectedBus, routes, onSelectBus, onSelectStop, activeBuses }: BusMapProps) {
-  const [selectedMapStopId, setSelectedMapStopId] = useState<number | undefined>(undefined);
+export function BusMap({
+  selectedRoute,
+  selectedBus,
+  routes,
+  onSelectBus,
+  onSelectStop,
+  activeBuses,
+}: BusMapProps) {
+  const [selectedMapStopId, setSelectedMapStopId] = useState<
+    number | undefined
+  >(undefined);
   const closingForBusSelection = useRef(false);
 
   const { data: stopETAs, isLoading: isStopETAsLoading } = useQuery({
     queryKey: ["stopETAs", selectedRoute?.id, selectedMapStopId],
     queryFn: async () => {
-      const parsedRouteId = parseInt(selectedRoute!.id.replace(/\D/g, ''));
+      const parsedRouteId = parseInt(selectedRoute!.id.replace(/\D/g, ""));
       if (!parsedRouteId || !selectedMapStopId) return null;
       return fetchRouteBuses(parsedRouteId, selectedMapStopId);
     },
     enabled: !!selectedRoute && !!selectedMapStopId,
-    refetchInterval: 15000 // Refresh popup ETAs every 15s
+    refetchInterval: 15000, // Refresh popup ETAs every 15s
   });
 
   return (
@@ -113,67 +137,95 @@ export function BusMap({ selectedRoute, selectedBus, routes, onSelectBus, onSele
         <>
           {/* Route line */}
           <Polyline
-            positions={selectedRoute.stops.map((s) => [s.lat, s.lng] as L.LatLngTuple)}
-            pathOptions={{ color: selectedRoute.color, weight: 4, opacity: 0.7, dashArray: "8 8" }}
+            positions={selectedRoute.stops.map(
+              (s) => [s.lat, s.lng] as L.LatLngTuple,
+            )}
+            pathOptions={{
+              color: selectedRoute.color,
+              weight: 4,
+              opacity: 0.7,
+              dashArray: "8 8",
+            }}
           />
 
           {/* Stops */}
           {selectedRoute.stops.map((stop) => {
-            const parsedStopId = parseInt(stop.id.replace(/\D/g, ''));
+            const parsedStopId = parseInt(stop.id.replace(/\D/g, ""));
             const isSelected = selectedMapStopId === parsedStopId;
-            
+
             return (
-              <Marker 
-                key={stop.id} 
-                position={[stop.lat, stop.lng]} 
+              <Marker
+                key={stop.id}
+                position={[stop.lat, stop.lng]}
                 icon={createStopIcon(selectedRoute.color)}
                 zIndexOffset={1000}
                 eventHandlers={{
                   click: () => {
                     closingForBusSelection.current = false;
                     setSelectedMapStopId(parsedStopId);
-                  }
+                  },
                 }}
               >
-                <Popup 
-                  className="custom-popup" 
+                <Popup
+                  className="custom-popup"
                   eventHandlers={{
                     remove: () => {
                       if (isSelected && !closingForBusSelection.current) {
-                          setSelectedMapStopId(undefined);
+                        setSelectedMapStopId(undefined);
                       }
-                    }
+                    },
                   }}
                 >
                   <div className="min-w-[140px]">
-                    <div className="text-xs font-semibold mb-2">{stop.name}</div>
-                    
+                    <div className="text-xs font-semibold mb-2">
+                      {stop.name}
+                    </div>
+
                     {isSelected && (
                       <div className="flex flex-col gap-1.5 mt-2 max-h-[160px] overflow-y-auto">
-                        <div className="text-[10px] uppercase text-muted-foreground font-semibold px-1 tracking-wider border-b border-border pb-1">Approaching Buses</div>
+                        <div className="text-[10px] uppercase text-muted-foreground font-semibold px-1 tracking-wider border-b border-border pb-1">
+                          Approaching Buses
+                        </div>
                         {isStopETAsLoading ? (
-                          <div className="text-[10px] text-muted-foreground animate-pulse text-center py-2">Loading ETAs...</div>
+                          <div className="text-[10px] text-muted-foreground animate-pulse text-center py-2">
+                            Loading ETAs...
+                          </div>
                         ) : stopETAs?.data?.buses?.length > 0 ? (
                           stopETAs.data.buses.map((b: any) => {
-                            const matchingBus = activeBuses.find(ab => parseInt(ab.id.replace(/\D/g,'')) === b.busId);
+                            const matchingBus = activeBuses.find(
+                              (ab) =>
+                                parseInt(ab.id.replace(/\D/g, "")) === b.busId,
+                            );
                             return (
-                              <div 
-                                key={b.busId} 
-                                className="flex justify-between items-center text-[10px] bg-muted/30 hover:bg-muted/50 transition-colors p-1.5 rounded-md cursor-pointer" 
+                              <div
+                                key={b.busId}
+                                className="flex justify-between items-center text-[10px] bg-muted/30 hover:bg-muted/50 transition-colors p-1.5 rounded-md cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (matchingBus) {
-                                      closingForBusSelection.current = true;
-                                      onSelectBus(matchingBus);
-                                      if (onSelectStop) onSelectStop(parsedStopId);
+                                    closingForBusSelection.current = true;
+                                    onSelectBus(matchingBus);
+                                    // Pass the backend stop ID, not the parsed frontend ID
+                                    const backendStopId =
+                                      selectedRoute.stopIdMapping?.[
+                                        selectedRoute.stops.findIndex(
+                                          (s) => s.id === stop.id,
+                                        )
+                                      ];
+                                    if (onSelectStop && backendStopId)
+                                      onSelectStop(backendStopId);
                                   }
                                 }}
                               >
-                                <span className="font-medium whitespace-nowrap">Bus {b.busNumber}</span>
-                                <span className={`font-bold ${b.eta?.eta_minutes === 0 ? 'text-green-500' : 'text-primary'}`}>
-                                  {b.eta?.eta_minutes === 0 
-                                    ? 'Arrived' 
-                                    : b.eta?.eta_minutes >= 1440 
+                                <span className="font-medium whitespace-nowrap">
+                                  Bus {b.busNumber}
+                                </span>
+                                <span
+                                  className={`font-bold ${b.eta?.eta_minutes === 0 ? "text-green-500" : "text-primary"}`}
+                                >
+                                  {b.eta?.eta_minutes === 0
+                                    ? "Arrived"
+                                    : b.eta?.eta_minutes >= 1440
                                       ? `${Math.floor(b.eta.eta_minutes / 1440)}d ${Math.floor((b.eta.eta_minutes % 1440) / 60)}h`
                                       : b.eta?.eta_minutes >= 60
                                         ? `${Math.floor(b.eta.eta_minutes / 60)}h ${b.eta.eta_minutes % 60}m`
@@ -183,7 +235,9 @@ export function BusMap({ selectedRoute, selectedBus, routes, onSelectBus, onSele
                             );
                           })
                         ) : (
-                          <div className="text-[10px] text-muted-foreground text-center py-2">No buses active</div>
+                          <div className="text-[10px] text-muted-foreground text-center py-2">
+                            No buses active
+                          </div>
                         )}
                       </div>
                     )}
@@ -198,7 +252,10 @@ export function BusMap({ selectedRoute, selectedBus, routes, onSelectBus, onSele
             <Marker
               key={bus.id}
               position={[bus.lat, bus.lng]}
-              icon={createBusIcon(selectedRoute.color, selectedBus?.id === bus.id)}
+              icon={createBusIcon(
+                selectedRoute.color,
+                selectedBus?.id === bus.id,
+              )}
               eventHandlers={{ click: () => onSelectBus(bus) }}
             >
               <Popup>
@@ -224,7 +281,7 @@ export function BusMap({ selectedRoute, selectedBus, routes, onSelectBus, onSele
                 position={[bus.lat, bus.lng]}
                 icon={createBusIcon(route.color, false)}
               />
-            ))
+            )),
         )}
     </MapContainer>
   );
