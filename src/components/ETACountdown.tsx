@@ -595,7 +595,7 @@ export function ETACountdown({
                     </span>
                   )}
                   {isNext && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-medium border border-accent/20 no-underline">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/20 text-gray font-medium border border-accent/20 no-underline">
                       NEXT
                     </span>
                   )}
