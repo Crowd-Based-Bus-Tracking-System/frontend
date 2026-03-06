@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Clock, MapPin, CheckCircle2 } from "lucide-react";
+import { Clock, CheckCircle2 } from "lucide-react";
 import { BusRoute, Bus } from "@/data/routes";
 import { useQuery } from "@tanstack/react-query";
 import { predictETA } from "@/services/api";
@@ -30,9 +30,6 @@ export function ETACountdown({
   const [cachedConfirmedStopId, setCachedConfirmedStopId] = useState<
     number | null
   >(null);
-  const [locallyPassedStops, setLocallyPassedStops] = useState<Set<number>>(
-    new Set(),
-  );
 
   // Sync manually selected stop from the map popup into the local expansion state
   useEffect(() => {
@@ -201,7 +198,6 @@ export function ETACountdown({
   useEffect(() => {
     setCachedConfirmedStopId(null);
     setSelectedStopIndex(null);
-    setLocallyPassedStops(new Set());
     setSeconds(0);
     setZeroReachedAt(null);
   }, [bus.id]);
@@ -221,8 +217,11 @@ export function ETACountdown({
       return;
     }
 
-    // Don't overwrite countdown for stops that have already locally passed
-    if (locallyPassedStops.has(updatedSafeEffectiveTargetIndex)) {
+    // Don't overwrite countdown for stops that are already passed by backend
+    if (
+      routeEtaMap.get(route.stopIdMapping?.[updatedSafeEffectiveTargetIndex])
+        ?.is_passed
+    ) {
       return;
     }
 
@@ -328,7 +327,6 @@ export function ETACountdown({
     backendIsJourneyComplete,
     isTargetPassed,
     confirmedNextIndex,
-    locallyPassedStops,
     routeEtasData,
     backendNextStopId,
   ]);
@@ -347,37 +345,26 @@ export function ETACountdown({
   useEffect(() => {
     if (backendIsJourneyComplete) return;
 
-    // We reached 0 OR the ETA engine specifically told us it's passed geographically
-    if (isTargetPassed || (seconds === 0 && maxSeconds > 0)) {
+    if (isTargetPassed) {
       if (!zeroReachedAt) {
         setZeroReachedAt(Date.now());
       } else {
-        // Wait 3 seconds before auto-advancing to next stop
-        const waitThresholdMs = isTargetPassed ? 3000 : 3000;
-
-        if (Date.now() - zeroReachedAt > waitThresholdMs) {
-          // Mark current stop as locally passed
-          setLocallyPassedStops(
-            (prev) => new Set([...prev, updatedSafeEffectiveTargetIndex]),
-          );
-
+        if (Date.now() - zeroReachedAt > 3000) {
           if (updatedSafeEffectiveTargetIndex < route.stops.length - 1) {
             setSelectedStopIndex(updatedSafeEffectiveTargetIndex + 1);
-            setZeroReachedAt(null);
           }
+          setZeroReachedAt(null);
         }
       }
     } else {
       setZeroReachedAt(null);
     }
   }, [
-    seconds,
+    isTargetPassed,
     zeroReachedAt,
-    maxSeconds,
     updatedSafeEffectiveTargetIndex,
     route.stops.length,
     backendIsJourneyComplete,
-    isTargetPassed,
   ]);
 
   const days = Math.floor(seconds / (24 * 3600));
@@ -511,8 +498,7 @@ export function ETACountdown({
           }
 
           // Use only backend information - no frontend fallback logic
-          let isPassed =
-            locallyPassedStops.has(i) || routeEtaItem?.is_passed === true;
+          let isPassed = routeEtaItem?.is_passed === true;
 
           // Use backend progression - no frontend inference
           let isNext = backendStopId === backendNextStopId;
@@ -574,7 +560,7 @@ export function ETACountdown({
                 <motion.div
                   className={`w-3 h-3 rounded-full border-2 ${
                     isPassed
-                      ? "bg-primary border-primary"
+                      ? "bg-transparent border-muted-foreground/15"
                       : isSelected
                         ? "bg-primary border-primary"
                         : isNext
@@ -588,7 +574,7 @@ export function ETACountdown({
                 />
                 {i < route.stops.length - 1 && (
                   <div
-                    className={`w-0.5 h-5 ${isPassed ? "bg-primary" : "bg-border"}`}
+                    className={`w-0.5 h-5 ${isPassed ? "bg-muted-foreground/15" : "bg-border"}`}
                   />
                 )}
               </div>
@@ -602,11 +588,9 @@ export function ETACountdown({
                         : "text-muted-foreground"
                   }`}
                 >
-                  <span className={isPassed ? "line-through opacity-70" : ""}>
-                    {stop.name}
-                  </span>
-                  {isPassed && i === lastConfirmedStopIndex && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-medium border border-primary/20 no-underline">
+                  <span>{stop.name}</span>
+                  {i === lastConfirmedStopIndex && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-medium border border-primary/20">
                       LAST SEEN
                     </span>
                   )}
@@ -636,7 +620,6 @@ export function ETACountdown({
                     ~{formatCompactTime(futureETA)}
                   </span>
                 )}
-                {isPassed && <MapPin className="w-3 h-3 text-primary/50" />}
               </div>
             </div>
           );
