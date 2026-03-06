@@ -190,8 +190,17 @@ export function BusMap({
                           <div className="text-[10px] text-muted-foreground animate-pulse text-center py-2">
                             Loading ETAs...
                           </div>
-                        ) : stopETAs?.data?.buses?.length > 0 ? (
+                        ) : stopETAs.data.buses.length > 0 ? (
                           stopETAs.data.buses.map((b: any) => {
+                            const popupStopId = selectedMapStopId;
+
+                            const routeEtaItem = b.eta?.route_etas?.find(
+                              (s: any) => s.stop_id === popupStopId,
+                            );
+
+                            const etaMinutes =
+                              routeEtaItem?.eta_minutes ?? b.eta?.eta_minutes;
+
                             const matchingBus = activeBuses.find(
                               (ab) =>
                                 parseInt(ab.id.replace(/\D/g, "")) === b.busId,
@@ -221,15 +230,15 @@ export function BusMap({
                                   Bus {b.busNumber}
                                 </span>
                                 <span
-                                  className={`font-bold ${b.eta?.eta_minutes === 0 ? "text-green-500" : "text-primary"}`}
+                                  className={`font-bold ${etaMinutes === 0 ? "text-green-500" : "text-primary"}`}
                                 >
-                                  {b.eta?.eta_minutes === 0
+                                  {etaMinutes === 0
                                     ? "Arrived"
-                                    : b.eta?.eta_minutes >= 1440
-                                      ? `${Math.floor(b.eta.eta_minutes / 1440)}d ${Math.floor((b.eta.eta_minutes % 1440) / 60)}h`
-                                      : b.eta?.eta_minutes >= 60
-                                        ? `${Math.floor(b.eta.eta_minutes / 60)}h ${b.eta.eta_minutes % 60}m`
-                                        : `${b.eta?.eta_minutes}m`}
+                                    : etaMinutes >= 1440
+                                      ? `${Math.floor(etaMinutes / 1440)}d ${Math.floor((etaMinutes % 1440) / 60)}h`
+                                      : etaMinutes >= 60
+                                        ? `${Math.floor(etaMinutes / 60)}h ${etaMinutes % 60}m`
+                                        : `${etaMinutes}m`}
                                 </span>
                               </div>
                             );
