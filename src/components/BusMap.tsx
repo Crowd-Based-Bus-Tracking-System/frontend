@@ -113,7 +113,15 @@ export function BusMap({
     queryFn: async () => {
       const parsedRouteId = parseInt(selectedRoute!.id.replace(/\D/g, ""));
       if (!parsedRouteId || !selectedMapStopId) return null;
-      return fetchRouteBuses(parsedRouteId, selectedMapStopId);
+      
+      const selectedStopNode = selectedRoute!.stops.find(s => parseInt(s.id.replace(/\D/g, "")) === selectedMapStopId);
+      if (!selectedStopNode) return null;
+      const indexInStopsArray = selectedRoute!.stops.indexOf(selectedStopNode);
+      const backendTargetStopId = selectedRoute!.stopIdMapping?.[indexInStopsArray];
+
+      if (!backendTargetStopId) return null;
+
+      return fetchRouteBuses(parsedRouteId, backendTargetStopId);
     },
     enabled: !!selectedRoute && !!selectedMapStopId,
     refetchInterval: 15000,
@@ -224,12 +232,21 @@ export function BusMap({
                                   (s: any) => s.stop_id === backendStopId,
                                 );
 
-                                etaMinutes = routeEtaItem?.eta_minutes ?? null;
+                                if (routeEtaItem?.arrival_time) {
+                                  const arrivalTimeMillis = typeof routeEtaItem.arrival_time === "number" 
+                                    ? routeEtaItem.arrival_time 
+                                    : new Date(routeEtaItem.arrival_time).getTime();
+                                  
+                                  const secondsRemaining = Math.max(0, Math.floor((arrivalTimeMillis - Date.now()) / 1000));
+                                  etaMinutes = Math.floor(secondsRemaining / 60);
+                                } else {
+                                  etaMinutes = routeEtaItem?.eta_minutes ?? null;
+                                }
                               } else {
                                 etaMinutes =
                                   b.eta?.eta_minutes ??
                                   (b.eta?.eta_seconds
-                                    ? Math.round(b.eta.eta_seconds / 60)
+                                    ? Math.floor(Math.max(0, b.eta.eta_seconds) / 60)
                                     : null);
                               }
 

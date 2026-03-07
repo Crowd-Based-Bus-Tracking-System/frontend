@@ -18,16 +18,20 @@ interface RoutePanelProps {
   onBack: () => void;
 }
 
-const occupancyColors = {
-  low: "bg-bus-online",
-  medium: "bg-accent",
-  high: "bg-destructive",
+const occupancyColors: Record<string, string> = {
+  empty: "bg-emerald-400",
+  low: "bg-green-400",
+  moderate: "bg-amber-400",
+  high: "bg-orange-400",
+  full: "bg-red-500",
 };
 
-const occupancyLabels = {
+const occupancyLabels: Record<string, string> = {
+  empty: "Empty",
   low: "Low",
-  medium: "Medium",
-  high: "Full",
+  moderate: "Moderate",
+  high: "High",
+  full: "Full",
 };
 
 type RouteTab = "stops" | "timetable";
