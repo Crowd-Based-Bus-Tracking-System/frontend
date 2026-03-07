@@ -18,16 +18,20 @@ interface RoutePanelProps {
   onBack: () => void;
 }
 
-const occupancyColors = {
-  low: "bg-bus-online",
-  medium: "bg-accent",
-  high: "bg-destructive",
+const occupancyColors: Record<string, string> = {
+  empty: "bg-emerald-400",
+  low: "bg-green-400",
+  moderate: "bg-amber-400",
+  high: "bg-orange-400",
+  full: "bg-red-500",
 };
 
-const occupancyLabels = {
+const occupancyLabels: Record<string, string> = {
+  empty: "Empty",
   low: "Low",
-  medium: "Medium",
-  high: "Full",
+  moderate: "Moderate",
+  high: "High",
+  full: "Full",
 };
 
 type RouteTab = "stops" | "timetable";
@@ -109,9 +113,18 @@ export function RoutePanel({ routes, selectedRoute, selectedBus, activeBuses = [
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-                        {route.buses.filter(b => (b as any).hasConfirmedStop).length} live
-                      </span>
+                      {(() => {
+                        const liveCount = route.buses.filter(b => (b as any).hasConfirmedStop).length;
+                        return (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            liveCount > 0 
+                              ? "bg-bus-online/15 text-bus-online border border-bus-online/20" 
+                              : "bg-primary/10 text-primary"
+                          }`}>
+                            {liveCount} live
+                          </span>
+                        );
+                      })()}
                       <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
                   </div>

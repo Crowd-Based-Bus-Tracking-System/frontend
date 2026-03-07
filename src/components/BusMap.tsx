@@ -113,10 +113,18 @@ export function BusMap({
     queryFn: async () => {
       const parsedRouteId = parseInt(selectedRoute!.id.replace(/\D/g, ""));
       if (!parsedRouteId || !selectedMapStopId) return null;
-      return fetchRouteBuses(parsedRouteId, selectedMapStopId);
+      
+      const selectedStopNode = selectedRoute!.stops.find(s => parseInt(s.id.replace(/\D/g, "")) === selectedMapStopId);
+      if (!selectedStopNode) return null;
+      const indexInStopsArray = selectedRoute!.stops.indexOf(selectedStopNode);
+      const backendTargetStopId = selectedRoute!.stopIdMapping?.[indexInStopsArray];
+
+      if (!backendTargetStopId) return null;
+
+      return fetchRouteBuses(parsedRouteId, backendTargetStopId);
     },
     enabled: !!selectedRoute && !!selectedMapStopId,
-    refetchInterval: 15000, // Refresh popup ETAs every 15s
+    refetchInterval: 15000,
   });
 
   return (
@@ -191,58 +199,108 @@ export function BusMap({
                             Loading ETAs...
                           </div>
                         ) : stopETAs.data.buses.length > 0 ? (
-                          stopETAs.data.buses.map((b: any) => {
-                            const popupStopId = selectedMapStopId;
+                          stopETAs.data.buses
+                            .filter((b: any) => {
+                              const backendStopId =
+                                selectedRoute.stopIdMapping?.[
+                                  selectedRoute.stops.findIndex(
+                                    (s) => s.id === stop.id,
+                                  )
+                                ];
 
-                            const routeEtaItem = b.eta?.route_etas?.find(
-                              (s: any) => s.stop_id === popupStopId,
-                            );
+                              if (!b.lastConfirmedStop) return true;
 
-                            const etaMinutes =
-                              routeEtaItem?.eta_minutes ?? b.eta?.eta_minutes;
+                              const routeEtaItem = b.eta?.route_etas?.find(
+                                (s: any) => s.stop_id === backendStopId,
+                              );
 
-                            const matchingBus = activeBuses.find(
-                              (ab) =>
-                                parseInt(ab.id.replace(/\D/g, "")) === b.busId,
-                            );
-                            return (
-                              <div
-                                key={b.busId}
-                                className="flex justify-between items-center text-[10px] bg-muted/30 hover:bg-muted/50 transition-colors p-1.5 rounded-md cursor-pointer"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (matchingBus) {
-                                    closingForBusSelection.current = true;
-                                    onSelectBus(matchingBus);
-                                    // Pass the backend stop ID, not the parsed frontend ID
-                                    const backendStopId =
-                                      selectedRoute.stopIdMapping?.[
-                                        selectedRoute.stops.findIndex(
-                                          (s) => s.id === stop.id,
-                                        )
-                                      ];
-                                    if (onSelectStop && backendStopId)
-                                      onSelectStop(backendStopId);
-                                  }
-                                }}
-                              >
-                                <span className="font-medium whitespace-nowrap">
-                                  Bus {b.busNumber}
-                                </span>
-                                <span
-                                  className={`font-bold ${etaMinutes === 0 ? "text-green-500" : "text-primary"}`}
+                              if (!routeEtaItem) return false;
+                              return routeEtaItem.is_passed !== true;
+                            })
+                            .map((b: any) => {
+                              const backendStopId =
+                                selectedRoute.stopIdMapping?.[
+                                  selectedRoute.stops.findIndex(
+                                    (s) => s.id === stop.id,
+                                  )
+                                ];
+
+                              let etaMinutes: number | null = null;
+
+                              if (b.lastConfirmedStop) {
+                                const routeEtaItem = b.eta?.route_etas?.find(
+                                  (s: any) => s.stop_id === backendStopId,
+                                );
+
+                                if (routeEtaItem?.arrival_time) {
+                                  const arrivalTimeMillis = typeof routeEtaItem.arrival_time === "number" 
+                                    ? routeEtaItem.arrival_time 
+                                    : new Date(routeEtaItem.arrival_time).getTime();
+                                  
+                                  const secondsRemaining = Math.max(0, Math.floor((arrivalTimeMillis - Date.now()) / 1000));
+                                  etaMinutes = Math.floor(secondsRemaining / 60);
+                                } else {
+                                  etaMinutes = routeEtaItem?.eta_minutes ?? null;
+                                }
+                              } else {
+                                etaMinutes =
+                                  b.eta?.eta_minutes ??
+                                  (b.eta?.eta_seconds
+                                    ? Math.floor(Math.max(0, b.eta.eta_seconds) / 60)
+                                    : null);
+                              }
+
+                              return { b, etaMinutes };
+                            })
+                            .sort((a: any, b: any) => {
+                              if (a.etaMinutes === null && b.etaMinutes === null) return 0;
+                              if (a.etaMinutes === null) return 1;
+                              if (b.etaMinutes === null) return -1;
+                              return a.etaMinutes - b.etaMinutes;
+                            })
+                            .map(({ b, etaMinutes }: any) => {
+                              const matchingBus = activeBuses.find(
+                                (ab) =>
+                                  parseInt(ab.id.replace(/\D/g, "")) ===
+                                  b.busId,
+                              );
+                              return (
+                                <div
+                                  key={b.busId}
+                                  className="flex justify-between items-center text-[10px] bg-muted/30 hover:bg-muted/50 transition-colors p-1.5 rounded-md cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (matchingBus) {
+                                      closingForBusSelection.current = true;
+                                      onSelectBus(matchingBus);
+                                      const backendStopId =
+                                        selectedRoute.stopIdMapping?.[
+                                          selectedRoute.stops.findIndex(
+                                            (s) => s.id === stop.id,
+                                          )
+                                        ];
+                                      if (onSelectStop && backendStopId)
+                                        onSelectStop(backendStopId);
+                                    }
+                                  }}
                                 >
-                                  {etaMinutes === 0
-                                    ? "Arrived"
-                                    : etaMinutes >= 1440
-                                      ? `${Math.floor(etaMinutes / 1440)}d ${Math.floor((etaMinutes % 1440) / 60)}h`
-                                      : etaMinutes >= 60
-                                        ? `${Math.floor(etaMinutes / 60)}h ${etaMinutes % 60}m`
-                                        : `${etaMinutes}m`}
-                                </span>
-                              </div>
-                            );
-                          })
+                                  <span className="font-medium whitespace-nowrap">
+                                    Bus {b.busNumber}
+                                  </span>
+                                  <span
+                                    className={`font-bold ${etaMinutes === 0 ? "text-green-500" : "text-primary"}`}
+                                  >
+                                    {etaMinutes === 0
+                                      ? "Arrived"
+                                      : etaMinutes >= 1440
+                                        ? `${Math.floor(etaMinutes / 1440)}d ${Math.floor((etaMinutes % 1440) / 60)}h`
+                                        : etaMinutes >= 60
+                                          ? `${Math.floor(etaMinutes / 60)}h ${etaMinutes % 60}m`
+                                          : `${etaMinutes}m`}
+                                  </span>
+                                </div>
+                              );
+                            })
                         ) : (
                           <div className="text-[10px] text-muted-foreground text-center py-2">
                             No buses active
@@ -279,7 +337,6 @@ export function BusMap({
         </>
       )}
 
-      {/* Show all buses when no route selected */}
       {!selectedRoute &&
         routes.map((route) =>
           route.buses

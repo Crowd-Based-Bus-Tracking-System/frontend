@@ -41,14 +41,16 @@ const Index = () => {
             const currentBuses = prev[selectedRoute.id] || [];
             
             const mappedBuses = data.buses.map(b => {
-               let mappedIncomingOccupancy: "low" | "medium" | "high" = "low";
+               let mappedIncomingOccupancy: "empty" | "low" | "moderate" | "high" | "full" = "empty";
                if (b.occupancyLevel) {
-                   if (b.occupancyLevel >= 5) mappedIncomingOccupancy = "high";
-                   else if (b.occupancyLevel >= 3) mappedIncomingOccupancy = "medium";
+                   const levelMap: Record<number, any> = {
+                      1: "empty", 2: "low", 3: "moderate", 4: "high", 5: "full"
+                   };
+                   mappedIncomingOccupancy = levelMap[b.occupancyLevel] || "empty";
                }
 
                const existingBus = currentBuses.find(cb => cb.id === `b${b.busId}`);
-               const currentOccupancy = existingBus ? existingBus.occupancy : mappedIncomingOccupancy;
+               const currentOccupancy = b.occupancyLevel ? mappedIncomingOccupancy : (existingBus ? existingBus.occupancy : "low");
                
                return {
                   id: `b${b.busId}`,
@@ -77,10 +79,10 @@ const Index = () => {
              const currentBuses = prev[selectedRoute.id];
              if (!currentBuses) return prev;
              
-             const levelMap: Record<number, "low" | "medium" | "high"> = {
-                1: "low", 2: "low",
-                3: "medium", 4: "medium",
-                5: "high"
+             const levelMap: Record<number, "empty" | "low" | "moderate" | "high" | "full"> = {
+                1: "empty", 2: "low",
+                3: "moderate", 4: "high",
+                5: "full"
              };
              
              const mappedBuses = currentBuses.map(bus => {
