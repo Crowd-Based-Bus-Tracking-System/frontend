@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { Clock, CheckCircle2 } from "lucide-react";
 import { BusRoute, Bus } from "@/data/routes";
@@ -16,10 +16,8 @@ export function ETACountdown({
   bus,
   selectedMapStopId,
 }: ETACountdownProps) {
-  // Memoize development environment check to avoid repeated process.env access
   const isDev = process.env.NODE_ENV === "development";
 
-  // Memoize fallbackNextStopIndex to avoid repeated findIndex calls
   const fallbackNextStopIndex = useMemo(
     () => route.stops.findIndex((s) => s.name === bus.nextStop),
     [route.stops, bus.nextStop],
@@ -31,7 +29,6 @@ export function ETACountdown({
     number | null
   >(null);
 
-  // Sync manually selected stop from the map popup into the local expansion state
   useEffect(() => {
     if (isDev) {
       console.log(
@@ -40,23 +37,24 @@ export function ETACountdown({
       );
     }
     if (selectedMapStopId != null && route.stopIdMapping) {
-      // Map backend stop ID to frontend index using the route's mapping
       const idx = route.stopIdMapping.indexOf(selectedMapStopId);
-      if (isDev) {
-        console.log(
-          "ETACountdown calculated index:",
-          idx,
-          "current selectedStopIndex:",
-          selectedStopIndex,
-          "setting selectedStopIndex to:",
-          idx,
-        );
-      }
-      if (idx !== -1 && idx !== selectedStopIndex) {
-        setSelectedStopIndex(idx);
+      if (idx !== -1) {
+        setSelectedStopIndex((prev) => {
+          if (isDev) {
+            console.log(
+              "ETACountdown calculated index:",
+              idx,
+              "current selectedStopIndex:",
+              prev,
+              "setting selectedStopIndex to:",
+              idx,
+            );
+          }
+          return prev !== idx ? idx : prev;
+        });
       }
     }
-  }, [selectedMapStopId, route.stopIdMapping, selectedStopIndex, isDev]);
+  }, [selectedMapStopId, route.stopIdMapping, bus.id, isDev]);
 
   const lastConfirmedStopIndex =
     cachedConfirmedStopId != null && route.stopIdMapping
@@ -75,17 +73,15 @@ export function ETACountdown({
       const parsedBusId = parseInt(bus.id.replace(/\D/g, ""));
       if (!parsedRouteId || !parsedBusId) return null;
 
-      // Always ask backend for full route ETA context, not guessed next stop
       return predictETA(parsedRouteId, parsedBusId, null);
     },
     enabled: !!route.id && !!bus.id,
-    refetchInterval: 5000, // Refresh ETAs every 5 seconds for moving buses
+    refetchInterval: 5000,
   });
 
   const routeEtasData =
     etaPrediction?.data?.route_etas || etaPrediction?.route_etas;
 
-  // Use backend route_etas to determine next stop - trust backend progression engine
   const nextRouteEta = useMemo(
     () => routeEtasData?.find((stop) => stop.is_passed === false),
     [routeEtasData],
@@ -104,7 +100,6 @@ export function ETACountdown({
           ? confirmedNextIndex
           : 0;
 
-  // Build routeEtaMap for O(1) lookup instead of O(n) search
   const routeEtaMap = useMemo(() => {
     const map = new Map();
     if (routeEtasData && Array.isArray(routeEtasData)) {
@@ -127,7 +122,6 @@ export function ETACountdown({
     return map;
   }, [routeEtasData, route.stopIdMapping]);
 
-  // Backend-driven journey completion detection with null safety
   const backendIsJourneyComplete =
     !!routeEtasData && !routeEtasData.some((s: any) => !s.is_passed);
 
@@ -158,7 +152,6 @@ export function ETACountdown({
       const parsedRouteId = parseInt(route.id.replace(/\D/g, ""));
       const parsedBusId = parseInt(bus.id.replace(/\D/g, ""));
 
-      // Double-check parsed IDs before making the call
       if (!parsedRouteId || !parsedBusId || !targetStopId) {
         return null;
       }
@@ -173,7 +166,6 @@ export function ETACountdown({
       targetStopId !== nextRouteEta?.stop_id,
   });
 
-  // Update currentEtaPrediction to use selected stop data when available
   const finalCurrentEtaPrediction =
     selectedStopIndex !== null ? selectedStopEtaPrediction : etaPrediction;
   const finalIsTargetPassed =
@@ -194,22 +186,31 @@ export function ETACountdown({
     }
   }, [selectedStopIndex, lastConfirmedStopIndex]);
 
-  // Reset state when bus changes
+  const activeStopRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (activeStopRef.current) {
+      setTimeout(() => {
+        activeStopRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [selectedMapStopId, bus.id, selectedStopIndex]);
+
   useEffect(() => {
     setCachedConfirmedStopId(null);
-    setSelectedStopIndex(null);
+    if (selectedMapStopId == null) {
+      setSelectedStopIndex(null);
+    }
     setSeconds(0);
     setZeroReachedAt(null);
   }, [bus.id]);
 
-  // Update cached confirmed stop ID when ETA prediction updates
   useEffect(() => {
     if (etaPrediction?.data?.last_confirmed_stop !== undefined) {
       setCachedConfirmedStopId(etaPrediction.data.last_confirmed_stop);
     }
   }, [etaPrediction?.data?.last_confirmed_stop]);
 
-  // Remove old frontend journey completion logic - use backend-driven detection
 
   useEffect(() => {
     if (backendIsJourneyComplete || isTargetPassed) {
@@ -217,7 +218,6 @@ export function ETACountdown({
       return;
     }
 
-    // Don't overwrite countdown for stops that are already passed by backend
     if (
       routeEtaMap.get(route.stopIdMapping?.[updatedSafeEffectiveTargetIndex])
         ?.is_passed
@@ -225,7 +225,6 @@ export function ETACountdown({
       return;
     }
 
-    // Debug logging
     if (isDev) {
       console.log("ETA Countdown Debug:", {
         finalCurrentEtaPrediction: finalCurrentEtaPrediction?.data,
@@ -235,7 +234,6 @@ export function ETACountdown({
       });
     }
 
-    // Always use route ETA data for consistency with selected stop display
     const targetStopId = route.stopIdMapping?.[updatedSafeEffectiveTargetIndex];
     const targetStopEta = targetStopId ? routeEtaMap.get(targetStopId) : null;
 
@@ -259,7 +257,6 @@ export function ETACountdown({
       finalCurrentEtaPrediction?.data?.arrival_time &&
       finalCurrentEtaPrediction.data.arrival_time !== null
     ) {
-      // Fallback to arrival_time if route ETA not available
       const arrival =
         typeof finalCurrentEtaPrediction.data.arrival_time === "number"
           ? finalCurrentEtaPrediction.data.arrival_time
@@ -280,7 +277,6 @@ export function ETACountdown({
       finalCurrentEtaPrediction?.data?.eta_seconds !== undefined &&
       finalCurrentEtaPrediction.data.eta_seconds !== null
     ) {
-      // Fallback to eta_seconds
       const calculatedSeconds = Math.max(
         0,
         finalCurrentEtaPrediction.data.eta_seconds,
@@ -295,7 +291,6 @@ export function ETACountdown({
       finalCurrentEtaPrediction?.data?.eta_minutes !== undefined &&
       finalCurrentEtaPrediction.data.eta_minutes !== null
     ) {
-      // Fallback to eta_minutes
       const calculatedSeconds = Math.max(
         0,
         finalCurrentEtaPrediction.data.eta_minutes * 60,
@@ -487,7 +482,6 @@ export function ETACountdown({
             ? routeEtaMap.get(backendStopId)
             : undefined;
 
-          // Debug mapping issues
           if (isDev && backendStopId && !routeEtaItem) {
             console.log(`Mapping failed for ${stop.name} (index ${i}):`, {
               backendStopId,
@@ -497,13 +491,11 @@ export function ETACountdown({
             });
           }
 
-          // Use only backend information - no frontend fallback logic
-          let isPassed = routeEtaItem?.is_passed === true;
+          const backendNextIndexInRoute = backendNextStopId ? route.stopIdMapping?.indexOf(backendNextStopId) ?? -1 : -1;
+          let isPassed = routeEtaItem?.is_passed === true || (backendNextIndexInRoute !== -1 && i < backendNextIndexInRoute);
 
-          // Use backend progression - no frontend inference
           let isNext = backendStopId === backendNextStopId;
 
-          // If the backend says the "next" stop is actually already passed, step the next marker forward visually
           if (isPassed && isNext) {
             isNext = false;
           }
@@ -512,9 +504,7 @@ export function ETACountdown({
           const isSelected =
             i === updatedSafeEffectiveTargetIndex && !backendIsJourneyComplete;
 
-          // Debug logging for ETA calculation
           if (isDev && i >= 2 && i <= 4) {
-            // Debug for Anuradhapura area - now enabled
             console.log(`ETA Calculation for ${stop.name} (index ${i}):`, {
               backendStopId,
               routeEtaItem,
@@ -524,7 +514,6 @@ export function ETACountdown({
             });
           }
 
-          // Use ONLY backend route_etas data - no frontend calculations
           let futureETA = null;
           let nextETA = bus.etaMinutes;
 
@@ -539,9 +528,10 @@ export function ETACountdown({
           return (
             <div
               key={stop.id}
-              className={`flex items-center gap-3 py-3 px-2 -mx-2 rounded-md transition-colors ${
+              ref={isSelected ? activeStopRef : null}
+              className={`group flex items-center gap-3 py-3 px-2 -mx-2 rounded-md transition-colors min-h-[56px] ${
                 isSelected ? "bg-primary/5" : ""
-              } ${isFuture && !backendIsJourneyComplete ? "cursor-pointer hover:bg-muted" : ""}`}
+              } ${(isFuture || isNext) && !backendIsJourneyComplete && !isSelected ? "cursor-pointer hover:bg-muted" : ""}`}
               onClick={() => {
                 if (isDev) {
                   console.log(`Stop clicked: ${stop.name} (index ${i})`, {
@@ -558,25 +548,29 @@ export function ETACountdown({
             >
               <div className="flex flex-col items-center w-4">
                 <motion.div
-                  className={`w-3 h-3 rounded-full border-2 ${
+                  className={`w-3 h-3 rounded-full border-2 transition-colors ${
                     isPassed
                       ? "bg-transparent border-muted-foreground/15"
                       : isSelected
                         ? "bg-primary border-primary"
                         : isNext
-                          ? "bg-accent border-accent"
-                          : "bg-transparent border-border"
+                          ? "bg-primary/20 border-primary/40"
+                          : "bg-transparent border-border group-hover:border-foreground/40"
                   }`}
                   animate={
                     isSelected && !isPassed ? { scale: [1, 1.3, 1] } : {}
                   }
                   transition={{ duration: 1.5, repeat: Infinity }}
                 />
-                {i < route.stops.length - 1 && (
-                  <div
-                    className={`w-0.5 h-5 ${isPassed ? "bg-muted-foreground/15" : "bg-border"}`}
-                  />
-                )}
+                <div
+                  className={`w-0.5 h-5 transition-colors ${
+                    isPassed
+                      ? "bg-muted-foreground/15"
+                      : isNext || isSelected
+                        ? "bg-primary/40"
+                        : "bg-border group-hover:bg-foreground/20"
+                  }`}
+                />
               </div>
               <div className="flex-1 flex items-center justify-between">
                 <span
@@ -595,7 +589,7 @@ export function ETACountdown({
                     </span>
                   )}
                   {isNext && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/20 text-gray font-medium border border-accent/20 no-underline">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium border border-primary/20 no-underline">
                       NEXT
                     </span>
                   )}
@@ -612,12 +606,12 @@ export function ETACountdown({
                 )}
                 {isNext && !isSelected && (
                   <span className="text-[11px] text-muted-foreground tabular-nums">
-                    ~{formatCompactTime(nextETA)}
+                    {formatCompactTime(nextETA)}
                   </span>
                 )}
                 {futureETA !== null && !backendIsJourneyComplete && (
                   <span className="text-[11px] text-muted-foreground tabular-nums">
-                    ~{formatCompactTime(futureETA)}
+                    {formatCompactTime(futureETA)}
                   </span>
                 )}
               </div>

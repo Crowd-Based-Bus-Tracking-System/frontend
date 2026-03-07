@@ -233,6 +233,15 @@ export function BusMap({
                                     : null);
                               }
 
+                              return { b, etaMinutes };
+                            })
+                            .sort((a: any, b: any) => {
+                              if (a.etaMinutes === null && b.etaMinutes === null) return 0;
+                              if (a.etaMinutes === null) return 1;
+                              if (b.etaMinutes === null) return -1;
+                              return a.etaMinutes - b.etaMinutes;
+                            })
+                            .map(({ b, etaMinutes }: any) => {
                               const matchingBus = activeBuses.find(
                                 (ab) =>
                                   parseInt(ab.id.replace(/\D/g, "")) ===
