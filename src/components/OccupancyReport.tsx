@@ -38,7 +38,6 @@ export function OccupancyReport({ route, bus }: OccupancyReportProps) {
   const parsedBusId = parseInt(bus.id.replace(/\D/g, ''));
   const parsedRouteId = parseInt(route.id.replace(/\D/g, ''));
 
-  // Fetch current confirmed occupancy
   const { data: currentOccupancy } = useQuery({
     queryKey: ["occupancy", parsedBusId],
     queryFn: () => fetchCurrentOccupancy(parsedBusId),
@@ -46,7 +45,6 @@ export function OccupancyReport({ route, bus }: OccupancyReportProps) {
     refetchInterval: 30000
   });
 
-  // Fetch recent reports
   const { data: reportsData } = useQuery({
     queryKey: ["occupancy-reports", parsedBusId],
     queryFn: () => fetchOccupancyReports(parsedBusId),
@@ -55,7 +53,6 @@ export function OccupancyReport({ route, bus }: OccupancyReportProps) {
 
   const reports: OccupancyReport[] = reportsData?.reports || [];
 
-  // Socket listeners for real-time updates
   useEffect(() => {
     if (!parsedRouteId) return;
 

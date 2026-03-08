@@ -302,7 +302,6 @@ export function ETACountdown({
 
       setSeconds(calculatedSeconds);
     } else {
-      // Final fallback to bus.etaMinutes
       const calculatedSeconds = Math.max(0, bus.etaMinutes * 60);
 
       if (isDev) {
@@ -476,7 +475,6 @@ export function ETACountdown({
       {/* Stop-by-stop ETA */}
       <div className="space-y-0">
         {route.stops.map((stop, i) => {
-          // Map frontend stop index to backend stop ID using the route's mapping
           const backendStopId = route.stopIdMapping?.[i];
           const routeEtaItem = backendStopId
             ? routeEtaMap.get(backendStopId)
