@@ -124,7 +124,7 @@ export function BusMap({
       return fetchRouteBuses(parsedRouteId, backendTargetStopId);
     },
     enabled: !!selectedRoute && !!selectedMapStopId,
-    refetchInterval: 15000,
+    refetchInterval: 5000,
   });
 
   return (
