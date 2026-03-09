@@ -198,71 +198,43 @@ export function BusMap({
                           <div className="text-[10px] text-muted-foreground animate-pulse text-center py-2">
                             Loading ETAs...
                           </div>
-                        ) : stopETAs.data.buses.length > 0 ? (
-                          stopETAs.data.buses
-                            .filter((b: any) => {
-                              const backendStopId =
-                                selectedRoute.stopIdMapping?.[
-                                  selectedRoute.stops.findIndex(
-                                    (s) => s.id === stop.id,
-                                  )
-                                ];
-
-                              if (!b.lastConfirmedStop) return true;
-
-                              const routeEtaItem = b.eta?.route_etas?.find(
-                                (s: any) => s.stop_id === backendStopId,
-                              );
-
-                              if (!routeEtaItem) return false;
-                              return routeEtaItem.is_passed !== true;
-                            })
-                            .map((b: any) => {
-                              const backendStopId =
-                                selectedRoute.stopIdMapping?.[
-                                  selectedRoute.stops.findIndex(
-                                    (s) => s.id === stop.id,
-                                  )
-                                ];
-
-                              let etaMinutes: number | null = null;
-
-                              if (b.lastConfirmedStop) {
+                        ) : stopETAs?.data?.buses?.length > 0 ? (
+                          (() => {
+                            const backendStopId = selectedRoute.stopIdMapping?.[
+                              selectedRoute.stops.findIndex(s => s.id === stop.id)
+                            ];
+                            const filtered = stopETAs.data.buses
+                              .map((b: any) => {
                                 const routeEtaItem = b.eta?.route_etas?.find(
-                                  (s: any) => s.stop_id === backendStopId,
+                                  (s: any) => s.stop_id == backendStopId
                                 );
+                                const isPassed =
+                                  routeEtaItem?.is_passed === true ||
+                                  b.eta?.is_passed === true;
+                                const etaMinutes =
+                                  !isPassed && routeEtaItem?.eta_seconds != null
+                                    ? Math.max(0, Math.round(routeEtaItem.eta_seconds / 60))
+                                    : null;
+                                return { b, routeEtaItem, etaMinutes, isPassed, backendStopId };
+                              })
+                              .filter(({ routeEtaItem, isPassed, etaMinutes }: any) =>
+                                routeEtaItem != null &&
+                                !isPassed &&
+                                etaMinutes !== null
+                              )
+                              .sort((a: any, b: any) => a.etaMinutes - b.etaMinutes);
 
-                                if (routeEtaItem?.arrival_time) {
-                                  const arrivalTimeMillis = typeof routeEtaItem.arrival_time === "number" 
-                                    ? routeEtaItem.arrival_time 
-                                    : new Date(routeEtaItem.arrival_time).getTime();
-                                  
-                                  const secondsRemaining = Math.max(0, Math.floor((arrivalTimeMillis - Date.now()) / 1000));
-                                  etaMinutes = Math.floor(secondsRemaining / 60);
-                                } else {
-                                  etaMinutes = routeEtaItem?.eta_minutes ?? null;
-                                }
-                              } else {
-                                etaMinutes =
-                                  b.eta?.eta_minutes ??
-                                  (b.eta?.eta_seconds
-                                    ? Math.floor(Math.max(0, b.eta.eta_seconds) / 60)
-                                    : null);
-                              }
+                            if (filtered.length === 0) {
+                              return (
+                                <div className="text-[10px] text-muted-foreground text-center py-2">
+                                  No approaching buses
+                                </div>
+                              );
+                            }
 
-                              return { b, etaMinutes };
-                            })
-                            .sort((a: any, b: any) => {
-                              if (a.etaMinutes === null && b.etaMinutes === null) return 0;
-                              if (a.etaMinutes === null) return 1;
-                              if (b.etaMinutes === null) return -1;
-                              return a.etaMinutes - b.etaMinutes;
-                            })
-                            .map(({ b, etaMinutes }: any) => {
+                            return filtered.map(({ b, etaMinutes, backendStopId: bsid }: any) => {
                               const matchingBus = activeBuses.find(
-                                (ab) =>
-                                  parseInt(ab.id.replace(/\D/g, "")) ===
-                                  b.busId,
+                                (ab) => parseInt(ab.id.replace(/\D/g, "")) === b.busId,
                               );
                               return (
                                 <div
@@ -273,14 +245,7 @@ export function BusMap({
                                     if (matchingBus) {
                                       closingForBusSelection.current = true;
                                       onSelectBus(matchingBus);
-                                      const backendStopId =
-                                        selectedRoute.stopIdMapping?.[
-                                          selectedRoute.stops.findIndex(
-                                            (s) => s.id === stop.id,
-                                          )
-                                        ];
-                                      if (onSelectStop && backendStopId)
-                                        onSelectStop(backendStopId);
+                                      if (onSelectStop && bsid) onSelectStop(bsid);
                                     }
                                   }}
                                 >
@@ -300,7 +265,8 @@ export function BusMap({
                                   </span>
                                 </div>
                               );
-                            })
+                            });
+                          })()
                         ) : (
                           <div className="text-[10px] text-muted-foreground text-center py-2">
                             No buses active
